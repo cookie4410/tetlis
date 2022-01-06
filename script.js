@@ -826,7 +826,7 @@ function drawConfig() {
 }
 
 function changeKey(key) {
-  if (key === "Enter") {
+  if (key === "Enter" || key === "Tab") {
     drawConfig();
     drawFillText("CAN'T USE !", 0, 110, 20, "#ddd", "bold");
     return;
