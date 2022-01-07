@@ -4,13 +4,10 @@
 const CANVAS = document.getElementById("tet_field");
 const CONTEXT = CANVAS.getContext("2d");
 
-const MINO_SIZE = 20;
-
-const FIELD_LINE = [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8];
-
-// テトリミノデータ
+// テトリミノ関連定数
 const MINOS = [
-  [0, 0, 0, 0, 0, 0, 0, 0], // null
+  // 各ミノのブロック座標
+  [0, 0, 0, 0, 0, 0, 0, 0], // none
   [0, 1, 1, 0, 1, 1, 1, 2], // T
   [0, 1, 0, 2, 1, 0, 1, 1], // S
   [0, 0, 0, 1, 1, 1, 1, 2], // Z
@@ -19,57 +16,8 @@ const MINOS = [
   [0, 1, 0, 2, 1, 1, 1, 2], // O
   [1, 0, 1, 1, 1, 2, 1, 3], // I
 ];
-
-const FIELD_ROW = 23;
-const FIELD_COL = 12;
-const DEFAULT_SPEED = 1000;
-
-const CANVAS_W = MINO_SIZE * FIELD_COL * 2;
-const CANVAS_H = MINO_SIZE * (FIELD_ROW - 2) + MINO_SIZE / 2;
-const MARGIN = (MINO_SIZE * FIELD_COL) / 2;
-
-const DEFAULT_KEYS = {
-  move_L: "ArrowLeft",
-  move_R: "ArrowRight",
-  softDrop: "ArrowDown",
-  hardDrop: "ArrowUp",
-  rotate_L: "a",
-  rotate_R: "d",
-  hold: "Shift",
-};
-
-const DEFAULT_STATS = {
-  score: "-",
-  level: 1,
-  lines: "-",
-};
-
-let startTime;
-let frameCount = 0;
-
-let field = [];
-let gameMode = "TITLE";
-let selectPos = 0;
-let confirmPos = 1;
-let configPromptMode = false;
-
-let mino_x = 0;
-let mino_y = 0;
-let currentMino;
-let minoLength;
-let minoNum;
-let minoBag = [];
-let direction;
-let hold = 0;
-let useHold = false;
-let oldKeys = {};
-let oldKey = "";
-
-let keys = Object.assign({}, DEFAULT_KEYS);
-let stats = Object.assign({}, DEFAULT_STATS);
-let gameSpeed = DEFAULT_SPEED;
-
 const BC_LIST = [
+  // 各ミノの色コード
   "#777", //ghost
   "#6b2ee6", //T
   "#3dcc3d", //S
@@ -80,16 +28,73 @@ const BC_LIST = [
   "#4de7ff", //I
   "#999", //wall
 ];
+const BLOCK_SIZE = 20; // ブロックの縦横幅
+
+// フィールド関連定数
+const FIELD_ROW = 23; // フィールドの行数（20行 + 壁 + 画面外）
+const FIELD_COL = 12; // フィールドの列数（10行 + 壁）
+const FIELD_TEMPLATE = [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]; // フィールドのテンプレート
+
+// キャンバス関連定数
+const CANVAS_W = BLOCK_SIZE * FIELD_COL * 2; // キャンバスの横幅を計算
+const CANVAS_H = BLOCK_SIZE * (FIELD_ROW - 2) + BLOCK_SIZE / 2; // キャンバスの縦幅を計算
+const MARGIN = (BLOCK_SIZE * FIELD_COL) / 2; // ゲーム時のマージンを計算
+
+// 各種初期値
+const DEFAULT_SPEED = 1000; // デフォルトのゲームスピード
+class InitializeKeys {
+  // デフォルトのキー配置
+  constructor() {
+    this.move_L = "ArrowLeft";
+    this.move_R = "ArrowRight";
+    this.softDrop = "ArrowDown";
+    this.hardDrop = "ArrowUp";
+    this.rotate_L = "a";
+    this.rotate_R = "d";
+    this.hold = "Shift";
+  }
+}
+class InitializeStats {
+  // デフォルトの成績ステータス
+  constructor() {
+    this.score = "-";
+    this.level = "-";
+    this.lines = 0;
+  }
+}
+
+// グローバル変数定義
+let startTime; // ループ開始時間
+let frameCount = 0; // ループ時のフレームカウント
+let field = []; // フィールドマップデータ
+let gameMode = "TITLE"; // ゲームモード
+let selectPos = 0; // メニュー時選択箇所
+let confirmPos = 1; // 確認時選択箇所
+let configPromptMode = false; // キーコンフィグ入力待機
+let mino_x = 0; // 現在ミノのX座標
+let mino_y = 0; // 現在ミノのY座標
+let currentMino; // 現在ミノのマップデータ
+let minoLength; // 現在ミノの長さ
+let minoNum; // 現在ミノの番号
+let minoBag = []; // ミノバッグ
+let direction; // 現在ミノの方角
+let hold = 0; // ホールド中のミノ番号
+let useHold = false; // ホールド使用済判定
+let oldKeys = {}; // キーコンフィグ時の待避所
+let oldKey = ""; // キーコンフィグ時の待避所
+let keys = new InitializeKeys(); // 現在のキーコンフィグ
+let stats = new InitializeStats(); // 現在の成績
+let gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
 
 // キャンバス描画サイズ指定
 CANVAS.setAttribute("width", CANVAS_W);
 CANVAS.setAttribute("height", CANVAS_H);
 
-// フィールドマップ生成
+// フィールドマップの二次元配列を生成
 function buildFieldMap() {
   let newField = field;
   while (newField.length < FIELD_ROW - 1) {
-    newField.unshift(FIELD_LINE.slice());
+    newField.unshift(FIELD_TEMPLATE.slice());
   }
   newField.push([8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]);
   return newField;
@@ -101,6 +106,7 @@ function buildMinoMap(num, rotate) {
   let minoMap = [];
   let minoData = MINOS[num];
   let len;
+  // I型ミノ分岐
   if (num === 7 && rotate === true) {
     while (minoMap.length < 4) {
       let defaultRow = [0, 0, 0, 0];
@@ -134,7 +140,7 @@ function drawBlock(x, y, blockNum) {
   let blockColor = BC_LIST[blockNum];
   CONTEXT.beginPath();
   CONTEXT.fillStyle = blockColor;
-  CONTEXT.rect(x + MARGIN, y - MINO_SIZE * 1.5, MINO_SIZE, MINO_SIZE);
+  CONTEXT.rect(x + MARGIN, y - BLOCK_SIZE * 1.5, BLOCK_SIZE, BLOCK_SIZE);
   CONTEXT.fill();
   CONTEXT.strokeStyle = "#222";
   CONTEXT.lineWidth = "1";
@@ -148,8 +154,8 @@ function drawMino() {
     for (let j = 0; j < length; j++) {
       if (currentMino[i][j]) {
         drawBlock(
-          (mino_x + j) * MINO_SIZE,
-          (mino_y + i) * MINO_SIZE,
+          (mino_x + j) * BLOCK_SIZE,
+          (mino_y + i) * BLOCK_SIZE,
           currentMino[i][j]
         );
       }
@@ -166,12 +172,13 @@ function drawField() {
   for (let i = 1; i < FIELD_ROW; i++) {
     for (let j = 0; j < FIELD_COL; j++) {
       if (field[i][j]) {
-        drawBlock(j * MINO_SIZE, i * MINO_SIZE, field[i][j]);
+        drawBlock(j * BLOCK_SIZE, i * BLOCK_SIZE, field[i][j]);
       }
     }
   }
 }
 
+// ゴーストを描画
 function drawGhost() {
   let ghost_y = 0;
   for (let i = 1; checkMove(0, i); i++) {
@@ -181,8 +188,8 @@ function drawGhost() {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
         drawBlock(
-          (mino_x + j) * MINO_SIZE,
-          (ghost_y + mino_y + i) * MINO_SIZE,
+          (mino_x + j) * BLOCK_SIZE,
+          (ghost_y + mino_y + i) * BLOCK_SIZE,
           0
         );
       }
@@ -190,15 +197,17 @@ function drawGhost() {
   }
 }
 
+// 判定ラインを描画
 function drawLine() {
   CONTEXT.beginPath();
-  CONTEXT.moveTo(MARGIN, MINO_SIZE / 2);
-  CONTEXT.lineTo(FIELD_COL * MINO_SIZE + MARGIN, MINO_SIZE / 2);
+  CONTEXT.moveTo(MARGIN, BLOCK_SIZE / 2);
+  CONTEXT.lineTo(FIELD_COL * BLOCK_SIZE + MARGIN, BLOCK_SIZE / 2);
   CONTEXT.strokeStyle = "#888";
   CONTEXT.lineWidth = 0.5;
   CONTEXT.stroke();
 }
 
+// 塗りつぶし文字を描画
 function drawFillText(t, x, y, size, color, weight) {
   CONTEXT.font = `${weight} ${size}px "Press Start 2P"`;
   CONTEXT.fillStyle = color;
@@ -208,6 +217,7 @@ function drawFillText(t, x, y, size, color, weight) {
   CONTEXT.fillText(t, x, y);
 }
 
+// 枠線文字を描画
 function drawStrokeText(t, x, y, size, color, weight) {
   CONTEXT.font = `${weight} ${size}px "Press Start 2P"`;
   CONTEXT.lineWidth = 0.1;
@@ -218,13 +228,14 @@ function drawStrokeText(t, x, y, size, color, weight) {
   CONTEXT.strokeText(t, x, y);
 }
 
+// 各種窓枠を描画
 function drawWindows() {
   let x = 10 + MARGIN * 3;
   let y = 10;
   CONTEXT.lineWidth = 1;
   CONTEXT.strokeStyle = "#ddd";
-  drawRadialRect(x, y, MINO_SIZE * 5, MINO_SIZE * 5, 10, "#ddd");
-  drawRadialRect(10, y, MINO_SIZE * 5, MINO_SIZE * 5, 10, "#ddd");
+  drawRadialRect(x, y, BLOCK_SIZE * 5, BLOCK_SIZE * 5, 10, "#ddd");
+  drawRadialRect(10, y, BLOCK_SIZE * 5, BLOCK_SIZE * 5, 10, "#ddd");
   CONTEXT.font = 'bold 15px "Press Start 2P"';
   CONTEXT.fillStyle = "#ddd";
   CONTEXT.fillText("NEXT", x + 10, 35);
@@ -232,15 +243,16 @@ function drawWindows() {
   for (let i = 0; i <= 4; i++) {
     drawRadialRect(
       x,
-      MINO_SIZE * (5 + i * 3) + y * 2,
-      MINO_SIZE * 4,
-      MINO_SIZE * 2.4,
+      BLOCK_SIZE * (5 + i * 3) + y * 2,
+      BLOCK_SIZE * 4,
+      BLOCK_SIZE * 2.4,
       10,
       "#ddd"
     );
   }
 }
 
+// 角丸四角形を描画
 function drawRadialRect(x, y, w, h, r, color) {
   CONTEXT.beginPath();
   CONTEXT.lineWidth = 1;
@@ -254,6 +266,7 @@ function drawRadialRect(x, y, w, h, r, color) {
   CONTEXT.stroke();
 }
 
+// 次のミノを描画
 function drawNextMino() {
   if (minoBag.length < 7) {
     minoBag = minoBag.concat(genBag());
@@ -266,13 +279,13 @@ function drawNextMino() {
     for (let j = 0; j < length; j++) {
       if (nextMino[i][j]) {
         if (minoBag[0] <= 5) {
-          x = MINO_SIZE / 2;
+          x = BLOCK_SIZE / 2;
         } else if (minoBag[0] === 7) {
-          y = -1 * (MINO_SIZE / 2);
+          y = -1 * (BLOCK_SIZE / 2);
         }
         drawBlock(
-          x + (13 + j) * MINO_SIZE,
-          y + (4 + i) * MINO_SIZE,
+          x + (13 + j) * BLOCK_SIZE,
+          y + (4 + i) * BLOCK_SIZE,
           nextMino[i][j]
         );
       }
@@ -280,6 +293,7 @@ function drawNextMino() {
   }
 }
 
+// 2～5個先のミノを描画
 function drawProspect() {
   if (minoBag.length < 7) {
     minoBag = minoBag.concat(genBag());
@@ -289,6 +303,7 @@ function drawProspect() {
   }
 }
 
+// ホールドを描画
 function drawHold() {
   if (hold != 0 && useHold === false) {
     drawHoldMino(hold);
@@ -297,6 +312,7 @@ function drawHold() {
   }
 }
 
+// ホールドミノを描画
 function drawHoldMino(color) {
   let holdMino = buildMinoMap(hold);
   let length = calcMinoLength(hold);
@@ -306,45 +322,47 @@ function drawHoldMino(color) {
     for (let j = 0; j < length; j++) {
       if (holdMino[i][j]) {
         if (hold <= 5) {
-          x = MINO_SIZE / 2;
+          x = BLOCK_SIZE / 2;
         } else if (hold === 7) {
-          y = -1 * (MINO_SIZE / 2);
+          y = -1 * (BLOCK_SIZE / 2);
         }
-        drawBlock(x + (-5 + j) * MINO_SIZE, y + (4 + i) * MINO_SIZE, color);
+        drawBlock(x + (-5 + j) * BLOCK_SIZE, y + (4 + i) * BLOCK_SIZE, color);
       }
     }
   }
 }
 
+// ブロックを描画（サイズ小）
 function drawSmallBlock(x, y, blockNum) {
   let blockColor = BC_LIST[blockNum];
-  let blockSize = MINO_SIZE * 0.8;
+  let blockSize = BLOCK_SIZE * 0.8;
   CONTEXT.beginPath();
   CONTEXT.fillStyle = blockColor;
-  CONTEXT.rect(x + MARGIN, y - MINO_SIZE * 1.5, blockSize, blockSize);
+  CONTEXT.rect(x + MARGIN, y - BLOCK_SIZE * 1.5, blockSize, blockSize);
   CONTEXT.fill();
   CONTEXT.strokeStyle = "#222";
   CONTEXT.lineWidth = "1";
   CONTEXT.stroke();
 }
 
+// ミノを描画（サイズ小）
 function drawSmallMino(num) {
   let targetNum = minoBag[num + 1];
   let targetMino = buildMinoMap(targetNum);
   let length = calcMinoLength(targetNum);
   let x = 0;
-  let y = num * MINO_SIZE * 3;
+  let y = num * BLOCK_SIZE * 3;
   for (let i = 0; i < length; i++) {
     for (let j = 0; j < length; j++) {
       if (targetMino[i][j]) {
         if (targetNum <= 5) {
-          x = (MINO_SIZE / 2) * 0.8;
+          x = (BLOCK_SIZE / 2) * 0.8;
         } else if (targetNum === 7) {
-          y = -1 * ((MINO_SIZE / 2) * 0.8) + num * MINO_SIZE * 3;
+          y = -1 * ((BLOCK_SIZE / 2) * 0.8) + num * BLOCK_SIZE * 3;
         }
         drawSmallBlock(
-          x + 12 * MINO_SIZE + (j + 1.1) * MINO_SIZE * 0.8,
-          y + MINO_SIZE * 7.5 + (i + 0.5) * MINO_SIZE * 0.8,
+          x + 12 * BLOCK_SIZE + (j + 1.1) * BLOCK_SIZE * 0.8,
+          y + BLOCK_SIZE * 7.5 + (i + 0.5) * BLOCK_SIZE * 0.8,
           targetMino[i][j]
         );
       }
@@ -352,12 +370,13 @@ function drawSmallMino(num) {
   }
 }
 
+// 成績を描画
 function drawStatus() {
-  drawRadialRect(10, 20 + MINO_SIZE * 5, MINO_SIZE * 5, 150, 10, "#ddd");
+  drawRadialRect(10, 20 + BLOCK_SIZE * 5, BLOCK_SIZE * 5, 150, 10, "#ddd");
   CONTEXT.font = '10px "Press Start 2P"';
   CONTEXT.fillStyle = "#ddd";
   const X = 20;
-  const Y = 40 + MINO_SIZE * 5;
+  const Y = 40 + BLOCK_SIZE * 5;
   let ny;
   for (let p in stats) {
     switch (p) {
@@ -372,12 +391,13 @@ function drawStatus() {
         break;
     }
     CONTEXT.textAlign = "end";
-    CONTEXT.fillText(stats[p], MINO_SIZE * 5, ny + 20);
+    CONTEXT.fillText(stats[p], BLOCK_SIZE * 5, ny + 20);
     CONTEXT.textAlign = "start";
     CONTEXT.fillText(p, X, ny);
   }
 }
 
+// ゲーム画面をまとめて描画
 function drawAll() {
   drawField();
   drawGhost();
@@ -390,6 +410,7 @@ function drawAll() {
   drawStatus();
 }
 
+// ミノバッグを生成
 function genBag() {
   let newBag = new Array(7);
   let serialNum = 1;
@@ -404,6 +425,7 @@ function genBag() {
   return newBag;
 }
 
+// ミノの長さを計算
 function calcMinoLength(num) {
   let lenth;
   switch (num) {
@@ -422,6 +444,7 @@ function calcMinoLength(num) {
   return length;
 }
 
+// 新規ミノ出現
 function spawnMino() {
   if (minoBag.length === 0) {
     minoBag = genBag();
@@ -479,6 +502,7 @@ function rotateMino(key) {
   return newMinoMap;
 }
 
+// スーパーローテーション処理
 function srs(key, newMino) {
   let srsPosition = [];
   if (key === "a") {
@@ -556,6 +580,7 @@ function srs(key, newMino) {
   }
 }
 
+// ミノをフィールドに固定
 function fixMino() {
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
@@ -568,6 +593,7 @@ function fixMino() {
   spawnMino();
 }
 
+// 自動落下
 function dropMino() {
   if (checkMove(0, 1)) {
     mino_y++;
@@ -578,6 +604,7 @@ function dropMino() {
   }
 }
 
+// ハードドロップ
 function hardDrop() {
   let ghost_y = 0;
   for (let i = 1; checkMove(0, i); i++) {
@@ -589,6 +616,7 @@ function hardDrop() {
   checkCollision();
 }
 
+// ホールド入れ替え
 function swapHold() {
   if (useHold === false) {
     if (hold === 0) {
@@ -606,6 +634,7 @@ function swapHold() {
   }
 }
 
+// ライン完成判定
 function checkLine() {
   let alignLine = [];
   for (let i = 1; i < FIELD_ROW - 1; i++) {
@@ -626,14 +655,30 @@ function checkLine() {
   }
 }
 
+// 得点を計算して加算
+function calcPoint(alignLine) {
+  switch (alignLine.length) {
+    case 1:
+      break;
+    case 2:
+      break;
+    case 3:
+      break;
+    case 4:
+      break;
+  }
+}
+
+// ライン消去
 function clearLine(alignLine) {
   for (let line of alignLine) {
     field.splice(line, 1);
-    field.unshift(FIELD_LINE.slice());
+    field.unshift(FIELD_TEMPLATE.slice());
     stats.lines++;
   }
 }
 
+// ライン超えゲームオーバー判定
 function checkLineOver() {
   let lineOverCount = 0;
   for (let i = 0; i < minoLength; i++) {
@@ -651,6 +696,7 @@ function checkLineOver() {
   }
 }
 
+// 干渉ゲームオーバー判定
 function checkCollision() {
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
@@ -664,6 +710,7 @@ function checkCollision() {
   }
 }
 
+// 各種変数の初期化
 function initialize(mode) {
   gameMode = mode;
   selectPos = 0;
@@ -678,9 +725,10 @@ function initialize(mode) {
   hold = 0;
   useHold = false;
   gameSpeed = DEFAULT_SPEED;
-  stats = Object.assign({}, DEFAULT_STATS);
+  stats = new InitializeStats();
 }
 
+// タイトル画面描画
 function drawTitle() {
   CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
   CONTEXT.beginPath();
@@ -688,24 +736,25 @@ function drawTitle() {
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
   drawStrokeText("TETLiS", 0, -60, 70, "#ddd", "bold");
   drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
-  drawFillText("CONFiG", 0, 30, 20, "#ddd", "bold");
+  drawFillText("KEY CONFiG", 0, 30, 20, "#ddd", "bold");
   drawFillText("Press ENTER to start!", 0, 100, 20, "#ddd", "bold");
   drawFillText("->", -140, selectPos * 30, 20, "#ddd", "bold");
 }
 
+// ゲームオーバー表示描画
 function drawGameOver() {
   let length = calcMinoLength(minoNum);
   for (let i = 0; i < length; i++) {
     for (let j = 0; j < length; j++) {
       if (currentMino[i][j]) {
-        drawBlock((mino_x + j) * MINO_SIZE, (mino_y + i) * MINO_SIZE, 0);
+        drawBlock((mino_x + j) * BLOCK_SIZE, (mino_y + i) * BLOCK_SIZE, 0);
       }
     }
   }
   for (let i = 1; i < FIELD_ROW - 1; i++) {
     for (let j = 1; j < FIELD_COL - 1; j++) {
       if (field[i][j]) {
-        drawBlock(j * MINO_SIZE, i * MINO_SIZE, 0);
+        drawBlock(j * BLOCK_SIZE, i * BLOCK_SIZE, 0);
       }
     }
   }
@@ -717,6 +766,7 @@ function drawGameOver() {
   drawStrokeText("Press SPACE", 0, 140, "30", "#ddd", "bold");
 }
 
+// キーコンフィグ描画
 function drawConfig() {
   CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
   CONTEXT.beginPath();
@@ -825,6 +875,7 @@ function drawConfig() {
   drawFillText("SELECT: Enter / CANCEL: Esc", 0, 210, 14, "#ddd", "normal");
 }
 
+// キーコンフィグ変更
 function changeKey(key) {
   if (key === "Enter" || key === "Tab") {
     drawConfig();
@@ -864,6 +915,7 @@ function changeKey(key) {
   drawConfig();
 }
 
+// コンフィグ確認画面描画
 function drawConfigConfirm() {
   let w = 300;
   let h = 100;
@@ -881,6 +933,7 @@ function drawConfigConfirm() {
   }
 }
 
+// スクショボタン
 document.getElementById("download").onclick = (event) => {
   let canvas = document.getElementById("tet_field");
 
@@ -893,7 +946,7 @@ document.getElementById("download").onclick = (event) => {
 // キーボードイベント
 document.onkeydown = function (e) {
   switch (gameMode) {
-    case "NORMAL_GAME":
+    case "NORMAL_GAME": // ノーマルゲーム時
       switch (e.key) {
         case keys.move_L: // 左移動(←)
           if (checkMove(-1, 0)) {
@@ -941,13 +994,13 @@ document.onkeydown = function (e) {
       }
       drawAll();
       break;
-    case "GAME_OVER":
+    case "GAME_OVER": // ゲームオーバー時
       if (e.key === " ") {
         initialize("TITLE");
         drawTitle();
       }
       break;
-    case "TITLE":
+    case "TITLE": // タイトル画面時
       switch (e.key) {
         case "ArrowUp":
           selectPos--;
@@ -975,7 +1028,7 @@ document.onkeydown = function (e) {
       selectPos %= 2;
       drawTitle();
       break;
-    case "CONFIG":
+    case "CONFIG": // コンフィグ時
       if (!configPromptMode) {
         switch (e.key) {
           case "ArrowUp":
@@ -985,11 +1038,7 @@ document.onkeydown = function (e) {
             selectPos++;
             break;
           case "Enter":
-            if (selectPos === 7) {
-              gameMode = "CONFIG_CONFIRM";
-              drawConfigConfirm();
-              return;
-            } else if (selectPos === 8) {
+            if (selectPos === 7 || selectPos === 8) {
               gameMode = "CONFIG_CONFIRM";
               drawConfigConfirm();
               return;
@@ -999,6 +1048,10 @@ document.onkeydown = function (e) {
               drawConfig();
             }
             break;
+          case "Escape":
+            initialize("TITLE");
+            drawTitle();
+            return;
         }
         if (selectPos < 0) {
           selectPos += 9;
@@ -1010,7 +1063,7 @@ document.onkeydown = function (e) {
         changeKey(e.key);
       }
       break;
-    case "CONFIG_CONFIRM":
+    case "CONFIG_CONFIRM": // コンフィグ確認画面時
       switch (e.key) {
         case "ArrowLeft":
           confirmPos--;
@@ -1033,12 +1086,17 @@ document.onkeydown = function (e) {
               return;
             case 8:
               gameMode = "CONFIG";
-              keys = Object.assign({}, DEFAULT_KEYS);
+              keys = new InitializeKeys();
               drawConfig();
               confirmPos = 1;
               return;
           }
           break;
+        case "Escape":
+          gameMode = "CONFIG";
+          drawConfig();
+          confirmPos = 1;
+          return;
       }
       if (confirmPos < 0) {
         confirmPos += 2;
@@ -1049,6 +1107,7 @@ document.onkeydown = function (e) {
   }
 };
 
+// ゲーム本編メインループ
 function mainLoop() {
   let nowTime = performance.now();
   let nowFrame = (nowTime - startTime) / gameSpeed;
@@ -1079,18 +1138,35 @@ function mainLoop() {
   }
 }
 
+// 画面読み込み時の処理
 window.onload = function () {
   startTime = performance.now();
+
+  window.addEventListener("keydown", keydownfunc, true);
 };
 
+var keydownfunc = function (e) {
+  var code = e.keyCode;
+  console.log(code);
+  switch (code) {
+    case 37: // ←
+    case 38: // ↑
+    case 39: // →
+    case 40: // ↓
+    case 32: // Space
+    case 9: // Tab
+      e.preventDefault();
+      console.log(code);
+  }
+};
+
+// GoogleFont読み込み完了後の処理
 WebFont.load({
   custom: {
     families: ["Press Start 2P"],
   },
   active: function () {
     drawTitle();
-    // gameMode = "CONFIG_CONFIRM";
-    // drawConfigConfirm(); //test
   },
   inactive: function () {
     drawTitle();
