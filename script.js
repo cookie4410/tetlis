@@ -57,7 +57,7 @@ class InitializeKeys {
 class InitializeStats {
   // デフォルトの成績ステータス
   constructor() {
-    this.score = "-";
+    this.score = 0;
     this.level = "-";
     this.lines = 0;
   }
@@ -67,7 +67,7 @@ class InitializeStats {
 let startTime; // ループ開始時間
 let frameCount = 0; // ループ時のフレームカウント
 let field = []; // フィールドマップデータ
-let gameMode = "TITLE"; // ゲームモード
+let situation = "TITLE"; // ゲームモード
 let selectPos = 0; // メニュー時選択箇所
 let confirmPos = 1; // 確認時選択箇所
 let configPromptMode = false; // キーコンフィグ入力待機
@@ -85,6 +85,8 @@ let oldKey = ""; // キーコンフィグ時の待避所
 let keys = new InitializeKeys(); // 現在のキーコンフィグ
 let stats = new InitializeStats(); // 現在の成績
 let gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
+let pauseTime;
+let allCookies = getCookies(); // クッキーの連想配列
 
 // キャンバス描画サイズ指定
 CANVAS.setAttribute("width", CANVAS_W);
@@ -659,12 +661,16 @@ function checkLine() {
 function calcPoint(alignLine) {
   switch (alignLine.length) {
     case 1:
+		stats.score += 100;
       break;
     case 2:
+		stats.score += 300;
       break;
     case 3:
+		stats.score += 500;
       break;
     case 4:
+		stats.score += 800;
       break;
   }
 }
@@ -687,7 +693,7 @@ function checkLineOver() {
         if (mino_y + i <= 1) {
           lineOverCount++;
           if (lineOverCount === 4) {
-            gameMode = "GAME_OVER";
+            situation = "GAME_OVER";
             return;
           }
         }
@@ -702,7 +708,7 @@ function checkCollision() {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
         if (field[mino_y + i][mino_x + j]) {
-          gameMode = "GAME_OVER";
+          situation = "GAME_OVER";
           return;
         }
       }
@@ -712,7 +718,7 @@ function checkCollision() {
 
 // 各種変数の初期化
 function initialize(mode) {
-  gameMode = mode;
+  situation = mode;
   selectPos = 0;
   configPromptMode = false;
   startTime = performance.now();
@@ -741,6 +747,18 @@ function drawTitle() {
   drawFillText("->", -140, selectPos * 30, 20, "#ddd", "bold");
 }
 
+// ポーズメニュー描画
+function drawPause() {
+	CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)"
+	CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+	drawFillText("PAUSE", 0, -60, 70, "#222", "bold");
+	drawStrokeText("PAUSE", 0, -60, 70, "#ddd", "bold");
+	drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
+	drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
+	drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
+	drawFillText("->", -100, selectPos * 30, 20, "#ddd", "bold");
+}
+
 // ゲームオーバー表示描画
 function drawGameOver() {
   let length = calcMinoLength(minoNum);
@@ -764,6 +782,28 @@ function drawGameOver() {
   drawStrokeText("OVER", 0, 70, "80", "#ddd", "bold");
   drawFillText("Press SPACE", 0, 140, "30", "#222", "normal");
   drawStrokeText("Press SPACE", 0, 140, "30", "#ddd", "bold");
+}
+
+// クッキーを連想配列で取得
+function getCookies () {
+	let result = [];
+	if (document.cookie != '') {
+		const TMP = document.cookie.split('; ');
+		for (let i = 0; i < TMP.length; i++) {
+			let data = TMP[i].split('=');
+			result[data[0]] = decodeURIComponent(data[1]);
+		}
+	}
+	return result;
+}
+
+// クッキーからキーコンフィグ状態を反映
+function setKeysByCookie () {
+	for (let p in keys) {
+		if (allCookies[p] != undefined) {
+			keys[p] = allCookies[p];
+		}
+	}
 }
 
 // キーコンフィグ描画
@@ -891,24 +931,31 @@ function changeKey(key) {
   switch (selectPos) {
     case 0:
       keys.move_L = key;
+	  document.cookie = 'move_L=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 1:
       keys.move_R = key;
+	  document.cookie = 'move_R=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 2:
       keys.softDrop = key;
+	  document.cookie = 'softDrop=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 3:
       keys.hardDrop = key;
+	  document.cookie = 'hardDrop=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 4:
       keys.rotate_L = key;
+	  document.cookie = 'rotate_L=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 5:
       keys.rotate_R = key;
+	  document.cookie = 'rotate_R=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
     case 6:
       keys.hold = key;
+	  document.cookie = 'hold=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
   }
   configPromptMode = !configPromptMode;
@@ -945,8 +992,8 @@ document.getElementById("download").onclick = (event) => {
 
 // キーボードイベント
 document.onkeydown = function (e) {
-  switch (gameMode) {
-    case "NORMAL_GAME": // ノーマルゲーム時
+  switch (situation) {
+    case "GAME": // ノーマルゲーム時
       switch (e.key) {
         case keys.move_L: // 左移動(←)
           if (checkMove(-1, 0)) {
@@ -991,9 +1038,52 @@ document.onkeydown = function (e) {
         case keys.hold:
           swapHold();
           break;
+		case 'Escape':
+			situation = 'PAUSE';
+			selectPos = 0;
       }
       drawAll();
       break;
+	case "PAUSE":
+		switch(e.key) {
+			case "ArrowUp":
+				selectPos--;
+				break;
+			case "ArrowDown":
+				selectPos++;
+				break;
+			case "Enter":
+				switch(selectPos){
+					case 0:
+						situation = 'GAME';
+						startTime += performance.now() - pauseTime;
+						mainLoop();
+						return;
+					case 1:
+						initialize('GAME')
+						spawnMino();
+          				drawAll();
+						mainLoop();
+						return;
+					case 2:
+						initialize("TITLE");
+						drawTitle();
+						return;
+				}
+				break;
+			case "Escape":
+				situation = 'GAME';
+				startTime += performance.now() - pauseTime;
+				mainLoop();
+				return;
+		}
+		if (selectPos < 0) {
+			selectPos += 3;
+		}
+		selectPos %= 3;
+		drawAll();
+		drawPause();
+		break;
     case "GAME_OVER": // ゲームオーバー時
       if (e.key === " ") {
         initialize("TITLE");
@@ -1010,7 +1100,7 @@ document.onkeydown = function (e) {
           break;
         case "Enter":
           if (selectPos === 0) {
-            initialize("NORMAL_GAME");
+            initialize("GAME");
             spawnMino();
             drawAll();
             mainLoop();
@@ -1039,7 +1129,7 @@ document.onkeydown = function (e) {
             break;
           case "Enter":
             if (selectPos === 7 || selectPos === 8) {
-              gameMode = "CONFIG_CONFIRM";
+              situation = "CONFIG_CONFIRM";
               drawConfigConfirm();
               return;
             } else {
@@ -1073,7 +1163,7 @@ document.onkeydown = function (e) {
           break;
         case "Enter":
           if (confirmPos === 1) {
-            gameMode = "CONFIG";
+            situation = "CONFIG";
             drawConfig();
             confirmPos = 1;
             return;
@@ -1085,15 +1175,18 @@ document.onkeydown = function (e) {
               confirmPos = 1;
               return;
             case 8:
-              gameMode = "CONFIG";
+              situation = "CONFIG";
               keys = new InitializeKeys();
+			  for (let p in keys) {
+				  document.cookie = p + '=; max-age=0';
+			  }
               drawConfig();
               confirmPos = 1;
               return;
           }
           break;
         case "Escape":
-          gameMode = "CONFIG";
+          situation = "CONFIG";
           drawConfig();
           confirmPos = 1;
           return;
@@ -1102,6 +1195,7 @@ document.onkeydown = function (e) {
         confirmPos += 2;
       }
       confirmPos %= 2;
+	  drawConfig();
       drawConfigConfirm();
       break;
   }
@@ -1111,14 +1205,15 @@ document.onkeydown = function (e) {
 function mainLoop() {
   let nowTime = performance.now();
   let nowFrame = (nowTime - startTime) / gameSpeed;
-  switch (gameMode) {
-    case "NORMAL_GAME":
+  switch (situation) {
+    case "GAME":
       if (nowFrame > frameCount) {
         let c = 0;
         while (nowFrame > frameCount) {
           frameCount++;
           let alignLine = checkLine();
           if (alignLine != undefined) {
+			calcPoint(alignLine);
             clearLine(alignLine);
           } else {
             dropMino();
@@ -1135,19 +1230,22 @@ function mainLoop() {
       drawGameOver();
       cancelAnimationFrame(mainLoop);
       break;
+	case "PAUSE":
+		cancelAnimationFrame(mainLoop);
+		pauseTime = performance.now();
+		drawPause();
   }
 }
 
 // 画面読み込み時の処理
 window.onload = function () {
   startTime = performance.now();
-
+  setKeysByCookie();
   window.addEventListener("keydown", keydownfunc, true);
 };
 
 var keydownfunc = function (e) {
   var code = e.keyCode;
-  console.log(code);
   switch (code) {
     case 37: // ←
     case 38: // ↑
@@ -1156,7 +1254,6 @@ var keydownfunc = function (e) {
     case 32: // Space
     case 9: // Tab
       e.preventDefault();
-      console.log(code);
   }
 };
 
