@@ -85,7 +85,12 @@ let oldKey = ""; // キーコンフィグ時の待避所
 let keys = new InitializeKeys(); // 現在のキーコンフィグ
 let stats = new InitializeStats(); // 現在の成績
 let gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
-let pauseTime;
+let trickMes; // 加点メッセージ文
+let pauseTime; // ポーズした時間
+let useSpin = false; // 直近の操作が回転か判定
+let useTSpin = false; // TSpin判定
+let useTSpinMini = false; //TSpinミニ判定
+let srsPattern = 0; // SRSパターン
 let allCookies = getCookies(); // クッキーの連想配列
 
 // キャンバス描画サイズ指定
@@ -399,6 +404,15 @@ function drawStatus() {
   }
 }
 
+function drawTrickMes() {
+  let t = "T-Spin\nMini\nDouble";
+  t = ""; //test
+  let tlist = t.split("\n");
+  for (let i = 0; i < tlist.length; i++) {
+    drawFillText(tlist[i], -180, 90 + i * 18, 14, "#ddd", "normal");
+  }
+}
+
 // ゲーム画面をまとめて描画
 function drawAll() {
   drawField();
@@ -410,6 +424,7 @@ function drawAll() {
   drawProspect();
   drawHold();
   drawStatus();
+  drawTrickMes();
 }
 
 // ミノバッグを生成
@@ -456,7 +471,7 @@ function spawnMino() {
   minoLength = calcMinoLength(minoNum);
   mino_x = 4;
   mino_y = 0;
-  direction = 444444444;
+  direction = 0;
 }
 
 // 衝突判定
@@ -487,10 +502,11 @@ function checkMove(x, y, newMino) {
 
 // 回転処理
 function rotateMino(key) {
+  let rotated = false;
   let newMinoMap = buildMinoMap(minoNum, true);
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
-      if (key === "a") {
+      if (key === keys.rotate_L) {
         if (currentMino[j][minoLength - 1 - i]) {
           newMinoMap[i][j] = currentMino[j][minoLength - 1 - i];
         }
@@ -501,15 +517,65 @@ function rotateMino(key) {
       }
     }
   }
-  return newMinoMap;
+  if (checkMove(0, 0, newMinoMap)) {
+    currentMino = newMinoMap;
+    rotated = true;
+  } else {
+    rotated = srs(key, newMinoMap);
+  }
+  return rotated;
+}
+
+// TSpin成否チェック
+function checkTSpin() {
+  let count = 0;
+  const CHECK_POINT = [0, 0, 0, 2, 2, 0, 2, 2];
+  let checkMini = false;
+  let pointStats = "";
+  for (let i = 0; i < 8; i += 2) {
+    if (field[mino_y + CHECK_POINT[i]][mino_x + CHECK_POINT[i + 1]]) {
+      count++;
+      pointStats += "1";
+    } else {
+      pointStats += "0";
+    }
+  }
+  if (count === 3) {
+    let target;
+    switch (direction) {
+      case 0:
+        target = ["1011", "0111"];
+        break;
+      case 1:
+        target = ["1011", "1110"];
+        break;
+      case 2:
+        target = ["1101", "1110"];
+        break;
+      case 3:
+        target = ["0111", "1101"];
+        break;
+    }
+    if (target.includes(pointStats)) {
+      checkMini = true;
+    }
+  }
+  if (count >= 3 && useSpin) {
+    useTSpin = true;
+    if (checkMini && srsPattern != 4) {
+      useTSpinMini = true;
+    }
+  }
+  srsPattern = 0;
 }
 
 // スーパーローテーション処理
 function srs(key, newMino) {
   let srsPosition = [];
+  srsPattern = 0;
   if (key === "a") {
     if (minoNum === 7) {
-      switch (direction % 4) {
+      switch (direction) {
         case 0:
           srsPosition = [-1, 0, 2, 0, -1, -2, 2, 1];
           break;
@@ -524,7 +590,7 @@ function srs(key, newMino) {
           break;
       }
     } else {
-      switch (direction % 4) {
+      switch (direction) {
         case 0:
           srsPosition = [1, 0, 1, -1, 0, 2, 1, 2];
           break;
@@ -541,7 +607,7 @@ function srs(key, newMino) {
     }
   } else {
     if (minoNum === 7) {
-      switch (direction % 4) {
+      switch (direction) {
         case 0:
           srsPosition = [-2, 0, 1, 0, -2, 1, 1, -2];
           break;
@@ -556,7 +622,7 @@ function srs(key, newMino) {
           break;
       }
     } else {
-      switch (direction % 4) {
+      switch (direction) {
         case 0:
           srsPosition = [-1, 0, -1, -1, 0, 2, -1, 2];
           break;
@@ -573,13 +639,15 @@ function srs(key, newMino) {
     }
   }
   for (let i = 0; i <= 6; i += 2) {
+    srsPattern++;
     if (checkMove(srsPosition[i], srsPosition[i + 1], newMino)) {
       currentMino = newMino;
       mino_x += srsPosition[i];
       mino_y += srsPosition[i + 1];
-      break;
+      return true;
     }
   }
+  return false;
 }
 
 // ミノをフィールドに固定
@@ -598,6 +666,7 @@ function fixMino() {
 // 自動落下
 function dropMino() {
   if (checkMove(0, 1)) {
+    useSpin = false;
     mino_y++;
   } else {
     checkLineOver();
@@ -630,7 +699,7 @@ function swapHold() {
       minoLength = calcMinoLength(minoNum);
       mino_x = 4;
       mino_y = 0;
-      direction = 444444444;
+      direction = 0;
     }
     useHold = true;
   }
@@ -657,20 +726,37 @@ function checkLine() {
   }
 }
 
+// 加点メッセージを生成
+function genTrickMes() {
+  if (useTSpin) {
+    trickMes += "T-Spin";
+  }
+  if (useTSpinMini) {
+    trickMes += "\nMini";
+  }
+  useTSpin = false;
+  useTSpinMini = false;
+}
+
 // 得点を計算して加算
 function calcPoint(alignLine) {
+  let t = "";
   switch (alignLine.length) {
     case 1:
-		stats.score += 100;
+      t += "SINGLE";
+      stats.score += 100;
       break;
     case 2:
-		stats.score += 300;
+      t += "DOUBLE";
+      stats.score += 300;
       break;
     case 3:
-		stats.score += 500;
+      t += "TRIPLE";
+      stats.score += 500;
       break;
     case 4:
-		stats.score += 800;
+      t += "TETRiS";
+      stats.score += 800;
       break;
   }
 }
@@ -749,33 +835,20 @@ function drawTitle() {
 
 // ポーズメニュー描画
 function drawPause() {
-	CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)"
-	CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
-	drawFillText("PAUSE", 0, -60, 70, "#222", "bold");
-	drawStrokeText("PAUSE", 0, -60, 70, "#ddd", "bold");
-	drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
-	drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
-	drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
-	drawFillText("->", -100, selectPos * 30, 20, "#ddd", "bold");
+  CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  drawFillText("PAUSE", 0, -60, 70, "#222", "bold");
+  drawStrokeText("PAUSE", 0, -60, 70, "#ddd", "bold");
+  drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
+  drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
+  drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
+  drawFillText("->", -100, selectPos * 30, 20, "#ddd", "bold");
 }
 
 // ゲームオーバー表示描画
 function drawGameOver() {
-  let length = calcMinoLength(minoNum);
-  for (let i = 0; i < length; i++) {
-    for (let j = 0; j < length; j++) {
-      if (currentMino[i][j]) {
-        drawBlock((mino_x + j) * BLOCK_SIZE, (mino_y + i) * BLOCK_SIZE, 0);
-      }
-    }
-  }
-  for (let i = 1; i < FIELD_ROW - 1; i++) {
-    for (let j = 1; j < FIELD_COL - 1; j++) {
-      if (field[i][j]) {
-        drawBlock(j * BLOCK_SIZE, i * BLOCK_SIZE, 0);
-      }
-    }
-  }
+  CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
   drawFillText("GAME", 0, -20, "80", "#222", "bold");
   drawStrokeText("GAME", 0, -20, "80", "#ddd", "bold");
   drawFillText("OVER", 0, 70, "80", "#222", "bold");
@@ -785,25 +858,25 @@ function drawGameOver() {
 }
 
 // クッキーを連想配列で取得
-function getCookies () {
-	let result = [];
-	if (document.cookie != '') {
-		const TMP = document.cookie.split('; ');
-		for (let i = 0; i < TMP.length; i++) {
-			let data = TMP[i].split('=');
-			result[data[0]] = decodeURIComponent(data[1]);
-		}
-	}
-	return result;
+function getCookies() {
+  let result = [];
+  if (document.cookie != "") {
+    const TMP = document.cookie.split("; ");
+    for (let i = 0; i < TMP.length; i++) {
+      let data = TMP[i].split("=");
+      result[data[0]] = decodeURIComponent(data[1]);
+    }
+  }
+  return result;
 }
 
 // クッキーからキーコンフィグ状態を反映
-function setKeysByCookie () {
-	for (let p in keys) {
-		if (allCookies[p] != undefined) {
-			keys[p] = allCookies[p];
-		}
-	}
+function setKeysByCookie() {
+  for (let p in keys) {
+    if (allCookies[p] != undefined) {
+      keys[p] = allCookies[p];
+    }
+  }
 }
 
 // キーコンフィグ描画
@@ -931,31 +1004,38 @@ function changeKey(key) {
   switch (selectPos) {
     case 0:
       keys.move_L = key;
-	  document.cookie = 'move_L=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "move_L=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 1:
       keys.move_R = key;
-	  document.cookie = 'move_R=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "move_R=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 2:
       keys.softDrop = key;
-	  document.cookie = 'softDrop=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "softDrop=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 3:
       keys.hardDrop = key;
-	  document.cookie = 'hardDrop=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "hardDrop=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 4:
       keys.rotate_L = key;
-	  document.cookie = 'rotate_L=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "rotate_L=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 5:
       keys.rotate_R = key;
-	  document.cookie = 'rotate_R=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "rotate_R=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
     case 6:
       keys.hold = key;
-	  document.cookie = 'hold=' + encodeURIComponent(key) + ';max-age=315360000';
+      document.cookie =
+        "hold=" + encodeURIComponent(key) + ";max-age=315360000";
       break;
   }
   configPromptMode = !configPromptMode;
@@ -998,16 +1078,19 @@ document.onkeydown = function (e) {
         case keys.move_L: // 左移動(←)
           if (checkMove(-1, 0)) {
             mino_x--;
+            useSpin = false;
           }
           break;
         case keys.move_R: // 右移動(→)
           if (checkMove(1, 0)) {
             mino_x++;
+            useSpin = false;
           }
           break;
         case keys.softDrop: // 下移動(↓)
           if (checkMove(0, 1)) {
             mino_y++;
+            useSpin = false;
           }
           break;
         case keys.hardDrop: // ハードドロップ(↑)
@@ -1015,75 +1098,81 @@ document.onkeydown = function (e) {
           break;
         case keys.rotate_L: // 左回転(a)
           if (minoNum != 6) {
-            let newMino = rotateMino(e.key);
-            if (checkMove(0, 0, newMino)) {
-              currentMino = newMino;
-            } else {
-              srs(e.key, newMino);
+            let rotated = rotateMino(e.key);
+            if (rotated) {
+              direction -= 1;
+              if (direction < 0) {
+                direction += 4;
+              }
+              useSpin = true;
+            }
+            if (minoNum === 1) {
+              checkTSpin();
             }
           }
-          direction -= 1;
           break;
-        case keys.rotate_R: // 右移動(d)
+        case keys.rotate_R: // 右回転(d)
           if (minoNum != 6) {
-            let newMino = rotateMino(e.key);
-            if (checkMove(0, 0, newMino)) {
-              currentMino = newMino;
-            } else {
-              srs(e.key, newMino);
+            let rotated = rotateMino(e.key);
+            if (rotated) {
+              direction += 1;
+              direction %= 4;
+              useSpin = true;
             }
+            if (minoNum === 1) {
+              checkTSpin();
+            }
+            break;
           }
-          direction += 1;
-          break;
         case keys.hold:
           swapHold();
           break;
-		case 'Escape':
-			situation = 'PAUSE';
-			selectPos = 0;
+        case "Escape":
+          situation = "PAUSE";
+          selectPos = 0;
       }
       drawAll();
       break;
-	case "PAUSE":
-		switch(e.key) {
-			case "ArrowUp":
-				selectPos--;
-				break;
-			case "ArrowDown":
-				selectPos++;
-				break;
-			case "Enter":
-				switch(selectPos){
-					case 0:
-						situation = 'GAME';
-						startTime += performance.now() - pauseTime;
-						mainLoop();
-						return;
-					case 1:
-						initialize('GAME')
-						spawnMino();
-          				drawAll();
-						mainLoop();
-						return;
-					case 2:
-						initialize("TITLE");
-						drawTitle();
-						return;
-				}
-				break;
-			case "Escape":
-				situation = 'GAME';
-				startTime += performance.now() - pauseTime;
-				mainLoop();
-				return;
-		}
-		if (selectPos < 0) {
-			selectPos += 3;
-		}
-		selectPos %= 3;
-		drawAll();
-		drawPause();
-		break;
+    case "PAUSE":
+      switch (e.key) {
+        case "ArrowUp":
+          selectPos--;
+          break;
+        case "ArrowDown":
+          selectPos++;
+          break;
+        case "Enter":
+          switch (selectPos) {
+            case 0:
+              situation = "GAME";
+              startTime += performance.now() - pauseTime;
+              mainLoop();
+              return;
+            case 1:
+              initialize("GAME");
+              spawnMino();
+              drawAll();
+              mainLoop();
+              return;
+            case 2:
+              initialize("TITLE");
+              drawTitle();
+              return;
+          }
+          break;
+        case "Escape":
+          situation = "GAME";
+          startTime += performance.now() - pauseTime;
+          mainLoop();
+          return;
+      }
+      if (selectPos < 0) {
+        selectPos += 3;
+      }
+      selectPos %= 3;
+      drawAll();
+      drawPause();
+      break;
     case "GAME_OVER": // ゲームオーバー時
       if (e.key === " ") {
         initialize("TITLE");
@@ -1177,9 +1266,9 @@ document.onkeydown = function (e) {
             case 8:
               situation = "CONFIG";
               keys = new InitializeKeys();
-			  for (let p in keys) {
-				  document.cookie = p + '=; max-age=0';
-			  }
+              for (let p in keys) {
+                document.cookie = p + "=; max-age=0";
+              }
               drawConfig();
               confirmPos = 1;
               return;
@@ -1195,7 +1284,7 @@ document.onkeydown = function (e) {
         confirmPos += 2;
       }
       confirmPos %= 2;
-	  drawConfig();
+      drawConfig();
       drawConfigConfirm();
       break;
   }
@@ -1213,7 +1302,7 @@ function mainLoop() {
           frameCount++;
           let alignLine = checkLine();
           if (alignLine != undefined) {
-			calcPoint(alignLine);
+            calcPoint(alignLine);
             clearLine(alignLine);
           } else {
             dropMino();
@@ -1230,10 +1319,10 @@ function mainLoop() {
       drawGameOver();
       cancelAnimationFrame(mainLoop);
       break;
-	case "PAUSE":
-		cancelAnimationFrame(mainLoop);
-		pauseTime = performance.now();
-		drawPause();
+    case "PAUSE":
+      cancelAnimationFrame(mainLoop);
+      pauseTime = performance.now();
+      drawPause();
   }
 }
 
