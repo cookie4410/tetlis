@@ -911,6 +911,7 @@ function drawTitle() {
   drawFillText("KEY CONFiG", 0, 30, 20, "#ddd", "bold");
   drawFillText("Press ENTER to start!", 0, 100, 20, "#ddd", "bold");
   drawFillText("->", -140, selectPos * 30, 20, "#ddd", "bold");
+  drawFillText('ver.0.1.2', 170, 200, 12, '#ddd', 'normal');
 }
 
 // ポーズメニュー描画
