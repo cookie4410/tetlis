@@ -58,7 +58,7 @@ class InitializeStats {
   // デフォルトの成績ステータス
   constructor() {
     this.score = 0;
-    this.level = "-";
+    this.level = 0;
     this.lines = 0;
   }
 }
@@ -98,6 +98,10 @@ let useSpin = false; // 直近の操作が回転か判定
 let useTSpin = false; // TSpin判定
 let useTSpinMini = false; //TSpinミニ判定
 let srsPattern = 0; // SRSパターン
+let btb = false; // BtB判定
+let btbFlag = false; // 前回のBtBフラグ
+let ren = 0; // RENカウント
+let perfect = false; // パーフェクトクリア判定
 let allCookies = getCookies(); // クッキーの連想配列
 
 // キャンバス描画サイズ指定
@@ -711,9 +715,13 @@ function fixMino() {
   fixTime.push(performance.now());
   checkLine();
   if (alignLine.length > 0) {
+    ren++;
     clearLine();
+  } else {
+    ren = 0;
   }
-  genPointMes();
+  checkPerfect();
+  calcTSpinPoint();
   calcPoint();
   calcTotalPoint();
   useHold = false;
@@ -738,6 +746,7 @@ function hardDrop() {
   for (let i = 1; checkMove(0, i); i++) {
     ghost_y = i;
   }
+  stats.score += ghost_y * 2;
   mino_y += ghost_y;
   checkLineOver();
   fixMino();
@@ -778,49 +787,84 @@ function checkLine() {
 }
 
 // 加点メッセージを生成
-function genPointMes () {
+function calcTSpinPoint () {
   if (useTSpin) {
     pointMes += 'T-Spin\n';
     if (alignLine.length > 0) {
-      additionPoint += alignLine.length * 200 + 500;
+      if (!useTSpinMini) {
+        additionPoint += (alignLine.length * 200 + 500) * (stats.level + 1);
+      }
     }
   }
   if (useTSpinMini) {
     pointMes += 'Mini\n';
-    additionPoint += 100;
+    additionPoint += 100 * (stats.level + 1);
   }
   if (useTSpin && alignLine.length === 0) {
     pointMes += 'Zero\n'
-    additionPoint += 400;
+    if (!useTSpinMini) {
+      additionPoint += 400 * (stats.level + 1);
+    }
+  }
+  if (useSpin && alignLine.length > 0) {
+    btb = true;
   }
   useTSpin = false;
   useTSpinMini = false;
 }
 
-// 得点を計算して加算
+// ライン消去点を計算
 function calcPoint() {
+  let pBonus = 0;
   switch (alignLine.length) {
     case 1:
-		pointMes += 'SINGLE\n';
-		additionPoint += 100;
+		  pointMes += 'SINGLE\n';
+  		additionPoint += 100 * (stats.level + 1);
+      pBonus = 800 * (stats.level + 1);
       break;
     case 2:
-		pointMes += 'DOUBLE\n';
-		additionPoint += 300;
+	  	pointMes += 'DOUBLE\n';
+	  	additionPoint += 300 * (stats.level + 1);
+      pBonus = 1200 * (stats.level + 1);
       break;
     case 3:
-		pointMes += 'TRIPLE\n';
-		additionPoint += 500;
+	  	pointMes += 'TRIPLE\n';
+	  	additionPoint += 500 * (stats.level + 1);
+      pBonus = 1800 * (stats.level + 1);
       break;
     case 4:
-		pointMes += 'TETRiS\n';
-		additionPoint += 800;
+	  	pointMes += 'TETRiS\n';
+      btb = true;
+	  	additionPoint += 800 * (stats.level + 1);
+      pBonus = 2000 * (stats.level + 1);
       break;
+  }
+  if (perfect) {
+    additionPoint += pBonus;
+    pointMes += 'PERFECT\n';
   }
 }
 
+// 合計得点を計算
 function calcTotalPoint () {
   if (additionPoint) {
+    if (btb && btbFlag) {
+      additionPoint = Math.round(additionPoint * 1.5);
+      if (perfect && alignLine.length === 4) {
+        additionPoint += 1200 * (stats.level + 1);
+      }
+      pointMes += 'BtB\n';
+    } else if (btb) {
+      btbFlag = true;
+    }
+    btb = false;
+    if (ren > 1) {
+      additionPoint += (ren - 1) * 50 * (stats.level + 1);
+      pointMes += `REN ${ren - 1}\n`
+    } else if (ren > 21) {
+      additionPoint += 1000 * (stats.level + 1);
+      pointMes += 'REN 20+\n'
+    }
     compPointMes = pointMes + additionPoint;
     stats.score += additionPoint;
     mesTime = performance.now();
@@ -836,6 +880,17 @@ function clearLine() {
   for (let line of alignLine) {
     field[line] = (FIELD_TEMPLATE.slice());
     stats.lines++;
+  }
+}
+
+function checkPerfect () {
+  perfect = true;
+  for (let i = 1; i < FIELD_ROW - 1; i++) {
+    for (let j = 1; j < FIELD_COL - 1; j++) {
+      if (field[i][j]) {
+        perfect = false;
+      }
+    }
   }
 }
 
@@ -898,6 +953,10 @@ function initialize(mode) {
   srsPattern = 0;
   fixedCol = [];
   fixTime = [];
+  btb = false;
+  btbFlag = false;
+  ren = 0;
+  perfect = false;
 }
 
 // タイトル画面描画
@@ -1163,6 +1222,7 @@ document.onkeydown = function (e) {
           break;
         case keys.softDrop: // 下移動(↓)
           if (checkMove(0, 1)) {
+            stats.score += 1;
             mino_y++;
 			useSpin = false;
 		}
@@ -1443,3 +1503,29 @@ WebFont.load({
     drawTitle();
   },
 });
+
+let debug = [
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
+  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
+  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
+  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
+  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
+  [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+];
