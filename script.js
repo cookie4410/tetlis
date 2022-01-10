@@ -42,7 +42,7 @@ const MARGIN = (BLOCK_SIZE * FIELD_COL) / 2; // ゲーム時のマージンを�
 
 // 各種初期値
 const DEFAULT_SPEED = 1000; // デフォルトのゲームスピード
-class InitializeKeys {
+class InitialKeys {
   // デフォルトのキー配置
   constructor() {
     this.move_L = "ArrowLeft";
@@ -54,54 +54,81 @@ class InitializeKeys {
     this.hold = "Shift";
   }
 }
-class InitializeStats {
+class InitialStats {
   // デフォルトの成績ステータス
   constructor() {
     this.score = 0;
-    this.level = 0;
+    this.level = 1;
     this.lines = 0;
   }
 }
 
+class InitialKeyStatus {
+  constructor() {
+    this.move_L = false;
+    this.move_L_t = 0;
+    this.move_R = false;
+    this.move_R_t = 0;
+    this.softDrop = false;
+    this.softDrop_t = 0;
+    this.useDAS = false; // DASフラグ
+    this.DAStime = 0; // DAS突入時間
+  }
+}
+
+class InitialDatas {
+  constructor() {
+    this.selectPos = 0; // メニュー時選択箇所
+    this.configPromptMode = false; // キーコンフィグ入力待機
+    this.startTime = performance.now(); // ループ開始時間
+    this.minoBag = []; // ミノバッグ
+    this.frameCount = 0; // ループ時のフレームカウント
+    this.mino_x = 0; // 現在ミノのX座標
+    this.mino_y = 0; // 現在ミノのY座標
+    this.hold = 0; // ホールド中のミノ番号
+    this.useHold = false; // ホールド使用済フラグ
+    this.gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
+    this.stats = new InitialStats(); // 現在の成績
+    this.fixedCol = []; // ミノ固定ポジション
+    this.alignLine = []; // 揃ったライン
+    this.pointMes = ''; // 加点メッセージ文(組立用)
+    this.compPointMes = ''; // 加点メッセージ文(完成版)
+    this.additionPoint = 0; // 得点の合計加算値
+    this.useSpin = false; // 直近の操作が回転かのフラグ
+    this.useTSpin = false; // TSpinフラグ
+    this.useTSpinMini = false; //TSpinミニフラグ
+    this.srsPattern = 0; // SRSパターン
+    this.fixTime = []; // ミノ固定エフェクト開始時間
+    this.btb = false; // BtBフラグ
+    this.btbFlag = false; // 前回のBtBフラグ
+    this.ren = 0; // RENカウント
+    this.perfect = false; // パーフェクトクリアフラグ
+    this.keyStatus = new InitialKeyStatus(); // キー押下フラグ
+    this.actionCount = 0; // 行動回数
+    this.delayTime = 0;
+    this.onGround = false;
+  }
+}
+
+const DAS_FRAME = 11;
+const ARR_FRAME = 2;
+const MAX_ACTION = 8;
+
 // グローバル変数定義
-let startTime; // ループ開始時間
-let frameCount = 0; // ループ時のフレームカウント
-let field = []; // フィールドマップデータ
+let datas = new InitialDatas();
 let situation = "TITLE"; // ゲームモード
-let selectPos = 0; // メニュー時選択箇所
 let confirmPos = 1; // 確認時選択箇所
-let configPromptMode = false; // キーコンフィグ入力待機
-let mino_x = 0; // 現在ミノのX座標
-let mino_y = 0; // 現在ミノのY座標
+let field = []; // フィールドマップデータ
 let currentMino; // 現在ミノのマップデータ
 let minoLength; // 現在ミノの長さ
 let minoNum; // 現在ミノの番号
-let minoBag = []; // ミノバッグ
 let direction; // 現在ミノの方角
-let hold = 0; // ホールド中のミノ番号
-let useHold = false; // ホールド使用済判定
 let oldKeys = {}; // キーコンフィグ時の待避所
 let oldKey = ""; // キーコンフィグ時の待避所
-let keys = new InitializeKeys(); // 現在のキーコンフィグ
-let stats = new InitializeStats(); // 現在の成績
-let gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
-let fixedCol = []; // ミノ固定ポジション
-let fixTime = []; // ミノ固定エフェクト開始時間
-let alignLine = []; // 揃ったライン
+let keys = new InitialKeys(); // 現在のキーコンフィグ
 let clearTime; // ライン消去エフェクト開始時間
-let pointMes = ''; // 加点メッセージ文(組立用)
-let compPointMes = ''; // 加点メッセージ文(完成版)
 let mesTime = 0; // 加点メッセージ生成時間
-let additionPoint = 0; // 得点の合計加算値
 let pauseTime; // ポーズした時間
-let useSpin = false; // 直近の操作が回転か判定
-let useTSpin = false; // TSpin判定
-let useTSpinMini = false; //TSpinミニ判定
-let srsPattern = 0; // SRSパターン
-let btb = false; // BtB判定
-let btbFlag = false; // 前回のBtBフラグ
-let ren = 0; // RENカウント
-let perfect = false; // パーフェクトクリア判定
 let allCookies = getCookies(); // クッキーの連想配列
 
 // キャンバス描画サイズ指定
@@ -161,7 +188,15 @@ function drawBlock(x, y, blockNum) {
   CONTEXT.rect(x + MARGIN, y - BLOCK_SIZE * 1.5, BLOCK_SIZE, BLOCK_SIZE);
   CONTEXT.fill();
   CONTEXT.strokeStyle = "#222";
-  CONTEXT.lineWidth = "1";
+  CONTEXT.lineWidth = "0.5";
+  CONTEXT.stroke();
+}
+
+function drawGrid(x, y) {
+  CONTEXT.beginPath();
+  CONTEXT.rect(x + MARGIN, y - BLOCK_SIZE * 1.5, BLOCK_SIZE, BLOCK_SIZE);
+  CONTEXT.strokeStyle = "#555";
+  CONTEXT.lineWidth = "0.1";
   CONTEXT.stroke();
 }
 
@@ -172,8 +207,8 @@ function drawMino() {
     for (let j = 0; j < length; j++) {
       if (currentMino[i][j]) {
         drawBlock(
-          (mino_x + j) * BLOCK_SIZE,
-          (mino_y + i) * BLOCK_SIZE,
+          (datas.mino_x + j) * BLOCK_SIZE,
+          (datas.mino_y + i) * BLOCK_SIZE,
           currentMino[i][j]
         );
       }
@@ -187,6 +222,8 @@ function drawField() {
     for (let j = 0; j < FIELD_COL; j++) {
       if (field[i][j]) {
         drawBlock(j * BLOCK_SIZE, i * BLOCK_SIZE, field[i][j]);
+      } else {
+        drawGrid(j * BLOCK_SIZE, i * BLOCK_SIZE);
       }
     }
   }
@@ -202,8 +239,8 @@ function drawGhost() {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
         drawBlock(
-          (mino_x + j) * BLOCK_SIZE,
-          (ghost_y + mino_y + i) * BLOCK_SIZE,
+          (datas.mino_x + j) * BLOCK_SIZE,
+          (ghost_y + datas.mino_y + i) * BLOCK_SIZE,
           0
         );
       }
@@ -216,8 +253,8 @@ function drawLine() {
   CONTEXT.beginPath();
   CONTEXT.moveTo(MARGIN, BLOCK_SIZE / 2);
   CONTEXT.lineTo(FIELD_COL * BLOCK_SIZE + MARGIN, BLOCK_SIZE / 2);
-  CONTEXT.strokeStyle = "#888";
-  CONTEXT.lineWidth = 0.5;
+  CONTEXT.strokeStyle = "#999";
+  CONTEXT.lineWidth = 1;
   CONTEXT.stroke();
 }
 
@@ -282,19 +319,19 @@ function drawRadialRect(x, y, w, h, r, color) {
 
 // 次のミノを描画
 function drawNextMino() {
-  if (minoBag.length < 7) {
-    minoBag = minoBag.concat(genBag());
+  if (datas.minoBag.length < 7) {
+    datas.minoBag = datas.minoBag.concat(genBag());
   }
-  let nextMino = buildMinoMap(minoBag[0]);
-  let length = calcMinoLength(minoBag[0]);
+  let nextMino = buildMinoMap(datas.minoBag[0]);
+  let length = calcMinoLength(datas.minoBag[0]);
   let x = 0;
   let y = 0;
   for (let i = 0; i < length; i++) {
     for (let j = 0; j < length; j++) {
       if (nextMino[i][j]) {
-        if (minoBag[0] <= 5) {
+        if (datas.minoBag[0] <= 5) {
           x = BLOCK_SIZE / 2;
-        } else if (minoBag[0] === 7) {
+        } else if (datas.minoBag[0] === 7) {
           y = -1 * (BLOCK_SIZE / 2);
         }
         drawBlock(
@@ -309,8 +346,8 @@ function drawNextMino() {
 
 // 2～5個先のミノを描画
 function drawProspect() {
-  if (minoBag.length < 7) {
-    minoBag = minoBag.concat(genBag());
+  if (datas.minoBag.length < 7) {
+    datas.minoBag = datas.minoBag.concat(genBag());
   }
   for (let i = 0; i < 5; i++) {
     drawSmallMino(i);
@@ -319,25 +356,25 @@ function drawProspect() {
 
 // ホールドを描画
 function drawHold() {
-  if (hold != 0 && useHold === false) {
-    drawHoldMino(hold);
-  } else if (hold != 0) {
+  if (datas.hold != 0 && datas.useHold === false) {
+    drawHoldMino(datas.hold);
+  } else if (datas.hold != 0) {
     drawHoldMino(0);
   }
 }
 
 // ホールドミノを描画
 function drawHoldMino(color) {
-  let holdMino = buildMinoMap(hold);
-  let length = calcMinoLength(hold);
+  let holdMino = buildMinoMap(datas.hold);
+  let length = calcMinoLength(datas.hold);
   let x = 0;
   let y = 0;
   for (let i = 0; i < length; i++) {
     for (let j = 0; j < length; j++) {
       if (holdMino[i][j]) {
-        if (hold <= 5) {
+        if (datas.hold <= 5) {
           x = BLOCK_SIZE / 2;
-        } else if (hold === 7) {
+        } else if (datas.hold === 7) {
           y = -1 * (BLOCK_SIZE / 2);
         }
         drawBlock(x + (-5 + j) * BLOCK_SIZE, y + (4 + i) * BLOCK_SIZE, color);
@@ -361,7 +398,7 @@ function drawSmallBlock(x, y, blockNum) {
 
 // ミノを描画（サイズ小）
 function drawSmallMino(num) {
-  let targetNum = minoBag[num + 1];
+  let targetNum = datas.minoBag[num + 1];
   let targetMino = buildMinoMap(targetNum);
   let length = calcMinoLength(targetNum);
   let x = 0;
@@ -392,7 +429,8 @@ function drawStatus() {
   const X = 20;
   const Y = 40 + BLOCK_SIZE * 5;
   let ny;
-  for (let p in stats) {
+  let t;
+  for (let p in datas.stats) {
     switch (p) {
       case "level":
         ny = Y;
@@ -404,8 +442,13 @@ function drawStatus() {
         ny = Y + 100;
         break;
     }
+    if (datas.stats[p] > 99999999) {
+      t = '9999999+';
+    } else {
+      t = datas.stats[p];
+    }
     CONTEXT.textAlign = "end";
-    CONTEXT.fillText(stats[p], BLOCK_SIZE * 5, ny + 20);
+    CONTEXT.fillText(t, BLOCK_SIZE * 5, ny + 20);
     CONTEXT.textAlign = "start";
     CONTEXT.fillText(p, X, ny);
   }
@@ -415,7 +458,7 @@ function drawStatus() {
 function drawPointMes () {
   let elapsedTime = performance.now() - mesTime;
   if (elapsedTime < 2000) {
-    let tlist = compPointMes.split('\n');
+    let tlist = datas.compPointMes.split('\n');
     for (let i = 0; i < tlist.length; i++) {
       drawFillText(tlist[i], -180, 90 + i * 18, 14, '#ddd', 'normal');
     }
@@ -426,7 +469,7 @@ function drawPointMes () {
 function drawClearEffect () {
   let alpha = 1 - (performance.now() - clearTime) / 500;
   CONTEXT.fillStyle = `rgba(221, 221, 221, ${alpha})`;
-  for (let i of alignLine) {
+  for (let i of datas.alignLine) {
     CONTEXT.fillRect(MARGIN + BLOCK_SIZE, (i - 1.5) * BLOCK_SIZE, BLOCK_SIZE * (FIELD_COL - 2), BLOCK_SIZE)
   }
 }
@@ -435,8 +478,8 @@ function drawClearEffect () {
 function drawFixEffect () {
   let count = 0;
   let del = 0;
-  for (let li of fixedCol) {
-    let elapsedTime = performance.now() - fixTime[count]
+  for (let li of datas.fixedCol) {
+    let elapsedTime = performance.now() - datas.fixTime[count]
     let y_list = [];
     for (let i = 0; i < li.length; i += 2) {
       if (!y_list.includes(li[i + 1])) {
@@ -454,8 +497,8 @@ function drawFixEffect () {
     }
     count++;
   }
-  fixedCol.splice(0, del);
-  fixTime.splice(0, del);
+  datas.fixedCol.splice(0, del);
+  datas.fixTime.splice(0, del);
 }
 
 // ゲーム画面をまとめて描画
@@ -513,15 +556,17 @@ function calcMinoLength(num) {
 
 // 新規ミノ出現
 function spawnMino() {
-  if (minoBag.length === 0) {
-    minoBag = genBag();
+  if (datas.minoBag.length === 0) {
+    datas.minoBag = genBag();
   }
-  minoNum = minoBag.shift();
+  minoNum = datas.minoBag.shift();
   currentMino = buildMinoMap(minoNum);
   minoLength = calcMinoLength(minoNum);
-  mino_x = 4;
-  mino_y = 0;
+  datas.mino_x = 4;
+  datas.mino_y = 0;
   direction = 0;
+  datas.spawnTime = performance.now();
+  checkCollision();
 }
 
 // 衝突判定
@@ -534,8 +579,8 @@ function checkMove(x, y, newMino) {
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
       if (newMino[i][j]) {
-        new_x = mino_x + x + j;
-        new_y = mino_y + y + i;
+        new_x = datas.mino_x + x + j;
+        new_y = datas.mino_y + y + i;
         if (
           new_x < 0 ||
           new_x >= FIELD_COL ||
@@ -583,7 +628,7 @@ function checkTSpin () {
   let checkMini = false;
   let pointStats = '';
 	for (let i = 0; i < 8; i += 2) {
-		if (field[mino_y + CHECK_POINT[i]][mino_x + CHECK_POINT[i + 1]]) {
+		if (field[datas.mino_y + CHECK_POINT[i]][datas.mino_x + CHECK_POINT[i + 1]]) {
 			count++;
       pointStats += '1';
 		} else {
@@ -610,19 +655,19 @@ function checkTSpin () {
       checkMini = true;
     }
   }
-	if (count >= 3 && useSpin) {
-		useTSpin = true;
-    if (checkMini && srsPattern != 4) {
-      useTSpinMini = true;
+	if (count >= 3 && datas.useSpin) {
+		datas.useTSpin = true;
+    if (checkMini && datas.srsPattern != 4) {
+      datas.useTSpinMini = true;
     }
 	}
-  srsPattern = 0;
+  datas.srsPattern = 0;
 }
 
 // スーパーローテーション処理
 function srs(key, newMino) {
   let srsPosition = [];
-  srsPattern = 0;
+  datas.srsPattern = 0;
   if (key === "a") {
     if (minoNum === 7) {
       switch (direction) {
@@ -689,11 +734,25 @@ function srs(key, newMino) {
     }
   }
   for (let i = 0; i <= 6; i += 2) {
-	srsPattern++;
+	datas.srsPattern++;
     if (checkMove(srsPosition[i], srsPosition[i + 1], newMino)) {
       currentMino = newMino;
-      mino_x += srsPosition[i];
-      mino_y += srsPosition[i + 1];
+      datas.mino_x += srsPosition[i];
+      datas.mino_y += srsPosition[i + 1];
+      return true;
+    }
+  }
+  return false;
+}
+
+// ロックディレイ
+function checkLockDelay () {
+  if (datas.onGround) {
+    let dt = performance.now() - datas.delayTime;
+    if (datas.actionCount >= MAX_ACTION || dt >= 500) {
+      datas.actionCount = 0;
+      datas.delayTime = 0;
+      datas.onGround = false;
       return true;
     }
   }
@@ -702,41 +761,47 @@ function srs(key, newMino) {
 
 // ミノをフィールドに固定
 function fixMino() {
+  checkLineOver();
   let li = [];
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
-        field[mino_y + i][mino_x + j] = minoNum;
-        li.push(mino_y + i, mino_x + j);
+        field[datas.mino_y + i][datas.mino_x + j] = minoNum;
+        li.push(datas.mino_y + i, datas.mino_x + j);
       }
     }
   }
-  fixedCol.push(li);
-  fixTime.push(performance.now());
+  datas.fixedCol.push(li);
+  datas.fixTime.push(performance.now());
   checkLine();
-  if (alignLine.length > 0) {
-    ren++;
+  if (datas.alignLine.length > 0) {
+    datas.ren++;
     clearLine();
   } else {
-    ren = 0;
+    datas.ren = 0;
   }
   checkPerfect();
   calcTSpinPoint();
   calcPoint();
   calcTotalPoint();
-  useHold = false;
+  datas.useHold = false;
   spawnMino();
 }
 
 // 自動落下
 function dropMino() {
   if (checkMove(0, 1)) {
-	useSpin = false;
-    mino_y++;
-  } else {
-    checkLineOver();
-    fixMino();
-    checkCollision();
+	  datas.useSpin = false;
+    datas.mino_y++;
+    if (!checkMove(0, 1)) {
+      if (!datas.onGround) {
+        datas.delayTime = performance.now();
+      }
+      datas.onGround = true;
+    } else if (datas.onGround) {
+      datas.actionCount++;
+      datas.onGround = false;
+    }
   }
 }
 
@@ -746,28 +811,29 @@ function hardDrop() {
   for (let i = 1; checkMove(0, i); i++) {
     ghost_y = i;
   }
-  stats.score += ghost_y * 2;
-  mino_y += ghost_y;
-  checkLineOver();
+  datas.stats.score += ghost_y * 2;
+  datas.mino_y += ghost_y;
+  datas.actionCount = 0;
+  datas.delayTime = 0;
+  datas.onGround = false;
   fixMino();
-  checkCollision();
 }
 
 // ホールド入れ替え
 function swapHold() {
-  if (useHold === false) {
-    if (hold === 0) {
-      hold = minoNum;
+  if (datas.useHold === false) {
+    if (datas.hold === 0) {
+      datas.hold = minoNum;
       spawnMino();
     } else {
-      [hold, minoNum] = [minoNum, hold];
+      [datas.hold, minoNum] = [minoNum, datas.hold];
       currentMino = buildMinoMap(minoNum);
       minoLength = calcMinoLength(minoNum);
-      mino_x = 4;
-      mino_y = 0;
+      datas.mino_x = 4;
+      datas.mino_y = 0;
       direction = 0;
     }
-    useHold = true;
+    datas.useHold = true;
   }
 }
 
@@ -777,7 +843,7 @@ function checkLine() {
     for (let j = 1; j < FIELD_COL - 1; j++) {
       if (field[i][j]) {
         if (j === field[i].length - 2) {
-          alignLine.push(i);
+          datas.alignLine.push(i);
         }
       } else {
         break;
@@ -788,107 +854,116 @@ function checkLine() {
 
 // 加点メッセージを生成
 function calcTSpinPoint () {
-  if (useTSpin) {
-    pointMes += 'T-Spin\n';
-    if (alignLine.length > 0) {
-      if (!useTSpinMini) {
-        additionPoint += (alignLine.length * 200 + 500) * (stats.level + 1);
+  if (datas.useTSpin) {
+    datas.pointMes += 'T-Spin\n';
+    if (datas.alignLine.length > 0) {
+      if (!datas.useTSpinMini) {
+        datas.additionPoint += (datas.alignLine.length * 200 + 500) * (datas.stats.level);
       }
     }
   }
-  if (useTSpinMini) {
-    pointMes += 'Mini\n';
-    additionPoint += 100 * (stats.level + 1);
+  if (datas.useTSpinMini) {
+    datas.pointMes += 'Mini\n';
+    datas.additionPoint += 100 * (datas.stats.level);
   }
-  if (useTSpin && alignLine.length === 0) {
-    pointMes += 'Zero\n'
-    if (!useTSpinMini) {
-      additionPoint += 400 * (stats.level + 1);
+  if (datas.useTSpin && datas.alignLine.length === 0) {
+    datas.pointMes += 'Zero\n'
+    if (!datas.useTSpinMini) {
+      datas.additionPoint += 400 * (datas.stats.level);
     }
   }
-  if (useSpin && alignLine.length > 0) {
-    btb = true;
+  if (datas.useSpin && datas.alignLine.length > 0) {
+    datas.btb = true;
   }
-  useTSpin = false;
-  useTSpinMini = false;
+  datas.useTSpin = false;
+  datas.useTSpinMini = false;
 }
 
 // ライン消去点を計算
 function calcPoint() {
   let pBonus = 0;
-  switch (alignLine.length) {
+  switch (datas.alignLine.length) {
     case 1:
-		  pointMes += 'SINGLE\n';
-  		additionPoint += 100 * (stats.level + 1);
-      pBonus = 800 * (stats.level + 1);
+		  datas.pointMes += 'SINGLE\n';
+  		datas.additionPoint += 100 * (datas.stats.level);
+      pBonus = 800 * (datas.stats.level);
       break;
     case 2:
-	  	pointMes += 'DOUBLE\n';
-	  	additionPoint += 300 * (stats.level + 1);
-      pBonus = 1200 * (stats.level + 1);
+	  	datas.pointMes += 'DOUBLE\n';
+	  	datas.additionPoint += 300 * (datas.stats.level);
+      pBonus = 1200 * (datas.stats.level);
       break;
     case 3:
-	  	pointMes += 'TRIPLE\n';
-	  	additionPoint += 500 * (stats.level + 1);
-      pBonus = 1800 * (stats.level + 1);
+	  	datas.pointMes += 'TRIPLE\n';
+	  	datas.additionPoint += 500 * (datas.stats.level);
+      pBonus = 1800 * (datas.stats.level);
       break;
     case 4:
-	  	pointMes += 'TETRiS\n';
-      btb = true;
-	  	additionPoint += 800 * (stats.level + 1);
-      pBonus = 2000 * (stats.level + 1);
+	  	datas.pointMes += 'TETRiS\n';
+      datas.btb = true;
+	  	datas.additionPoint += 800 * (datas.stats.level);
+      pBonus = 2000 * (datas.stats.level);
       break;
   }
-  if (perfect) {
-    additionPoint += pBonus;
-    pointMes += 'PERFECT\n';
+  if (datas.perfect) {
+    datas.additionPoint += pBonus;
+    datas.pointMes += 'PERFECT\n';
   }
 }
 
 // 合計得点を計算
 function calcTotalPoint () {
-  if (additionPoint) {
-    if (btb && btbFlag) {
-      additionPoint = Math.round(additionPoint * 1.5);
-      if (perfect && alignLine.length === 4) {
-        additionPoint += 1200 * (stats.level + 1);
+  if (datas.additionPoint) {
+    if (datas.btb && datas.btbFlag) {
+      datas.additionPoint = Math.round(datas.additionPoint * 1.5);
+      if (datas.perfect && datas.alignLine.length === 4) {
+        datas.additionPoint += 1200 * (datas.stats.level);
       }
-      pointMes += 'BtB\n';
-    } else if (btb) {
-      btbFlag = true;
+      datas.pointMes += 'BtB\n';
+    } else if (datas.btb) {
+      datas.btbFlag = true;
     }
-    btb = false;
-    if (ren > 1) {
-      additionPoint += (ren - 1) * 50 * (stats.level + 1);
-      pointMes += `REN ${ren - 1}\n`
-    } else if (ren > 21) {
-      additionPoint += 1000 * (stats.level + 1);
-      pointMes += 'REN 20+\n'
+    datas.btb = false;
+    if (datas.ren > 1) {
+      datas.additionPoint += (datas.ren - 1) * 50 * (datas.stats.level);
+      datas.pointMes += `REN ${datas.ren - 1}\n`
+    } else if (datas.ren > 21) {
+      datas.additionPoint += 1000 * (datas.stats.level);
+      datas.pointMes += 'REN 20+\n'
     }
-    compPointMes = pointMes + additionPoint;
-    stats.score += additionPoint;
+    datas.compPointMes = datas.pointMes + datas.additionPoint;
+    datas.stats.score += datas.additionPoint;
     mesTime = performance.now();
   }
-  pointMes = '';
-  additionPoint = 0;
+  datas.pointMes = '';
+  datas.additionPoint = 0;
 }
 
 // ライン消去
 function clearLine() {
   situation = "CLEAR_EFFECT";
   clearTime = performance.now();
-  for (let line of alignLine) {
+  for (let line of datas.alignLine) {
     field[line] = (FIELD_TEMPLATE.slice());
-    stats.lines++;
   }
 }
 
+// レベルアップ
+function levelUp () {
+  if (datas.stats.lines >= datas.stats.level * 10) {
+    datas.stats.level++;
+    datas.startTime = performance.now();
+    datas.frameCount = 0;
+  }
+}
+
+// パーフェクトクリアチェック
 function checkPerfect () {
-  perfect = true;
+  datas.perfect = true;
   for (let i = 1; i < FIELD_ROW - 1; i++) {
     for (let j = 1; j < FIELD_COL - 1; j++) {
       if (field[i][j]) {
-        perfect = false;
+        datas.perfect = false;
       }
     }
   }
@@ -900,7 +975,7 @@ function checkLineOver() {
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
-        if (mino_y + i <= 1) {
+        if (datas.mino_y + i <= 1) {
           lineOverCount++;
           if (lineOverCount === 4) {
             situation = "GAME_OVER";
@@ -917,7 +992,7 @@ function checkCollision() {
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
-        if (field[mino_y + i][mino_x + j]) {
+        if (field[datas.mino_y + i][datas.mino_x + j]) {
           situation = "GAME_OVER";
           return;
         }
@@ -929,34 +1004,9 @@ function checkCollision() {
 // 各種変数の初期化
 function initialize(mode) {
   situation = mode;
-  selectPos = 0;
-  configPromptMode = false;
-  startTime = performance.now();
+  datas = new InitialDatas();
   field = [];
   field = buildFieldMap();
-  minoBag = [];
-  frameCount = 0;
-  mino_x = 0;
-  mino_y = 0;
-  hold = 0;
-  useHold = false;
-  gameSpeed = DEFAULT_SPEED;
-  stats = new InitializeStats();
-  fixedCol = [];
-  alignLine = [];
-  pointMes = '';
-  compPointMes = '';
-  additionPoint = 0;
-  useSpin = false;
-  useTSpin = false;
-  useTSpinMini = false;
-  srsPattern = 0;
-  fixedCol = [];
-  fixTime = [];
-  btb = false;
-  btbFlag = false;
-  ren = 0;
-  perfect = false;
 }
 
 // タイトル画面描画
@@ -969,7 +1019,7 @@ function drawTitle() {
   drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
   drawFillText("KEY CONFiG", 0, 30, 20, "#ddd", "bold");
   drawFillText("Press ENTER to start!", 0, 100, 20, "#ddd", "bold");
-  drawFillText("->", -140, selectPos * 30, 20, "#ddd", "bold");
+  drawFillText("->", -140, datas.selectPos * 30, 20, "#ddd", "bold");
   drawFillText('ver.0.1.2', 170, 200, 12, '#ddd', 'normal');
 }
 
@@ -982,7 +1032,7 @@ function drawPause() {
 	drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
 	drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
 	drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
-	drawFillText("->", -100, selectPos * 30, 20, "#ddd", "bold");
+	drawFillText("->", -100, datas.selectPos * 30, 20, "#ddd", "bold");
 }
 
 // ゲームオーバー表示描画
@@ -1080,14 +1130,14 @@ function drawConfig() {
         t = `Hold         : ${key}`;
         break;
     }
-    if (selectPos >= 7) {
-      arrow_y = selectPos * 30 - 70;
+    if (datas.selectPos >= 7) {
+      arrow_y = datas.selectPos * 30 - 70;
     } else {
-      arrow_y = selectPos * 30 - 100;
+      arrow_y = datas.selectPos * 30 - 100;
     }
-    if (configPromptMode) {
+    if (datas.configPromptMode) {
       key = "_";
-      switch (selectPos) {
+      switch (datas.selectPos) {
         case 0:
           oldKey = oldKeys.move_L;
           keys.move_L = key;
@@ -1141,7 +1191,7 @@ function changeKey(key) {
   } else if (key === "Escape") {
     key = oldKey;
   }
-  switch (selectPos) {
+  switch (datas.selectPos) {
     case 0:
       keys.move_L = key;
 	  document.cookie = 'move_L=' + encodeURIComponent(key) + ';max-age=315360000';
@@ -1171,7 +1221,7 @@ function changeKey(key) {
 	  document.cookie = 'hold=' + encodeURIComponent(key) + ';max-age=315360000';
       break;
   }
-  configPromptMode = !configPromptMode;
+  datas.configPromptMode = !datas.configPromptMode;
   drawConfig();
 }
 
@@ -1203,29 +1253,122 @@ document.getElementById("download").onclick = (event) => {
   link.click();
 };
 
+// キー押下処理
+function keyPush (key) {
+  switch (key) {
+    case keys.move_L:
+      if (!datas.keyStatus.move_L) {
+        datas.keyStatus.move_L = true;
+        datas.keyStatus.move_L_t = performance.now();
+      }
+      break;
+    case keys.move_R:
+      if (!datas.keyStatus.move_R) {
+        datas.keyStatus.move_R = true;
+        datas.keyStatus.move_R_t = performance.now();
+      }
+      break;
+    case keys.softDrop:
+      if (!datas.keyStatus.softDrop) {
+        datas.keyStatus.softDrop = true;
+        datas.keyStatus.softDrop_t = performance.now();
+      }
+      break;
+  }
+}
+
+// キー離上処理
+function keyUp (key) {
+  switch (key) {
+    case keys.move_L:
+      datas.keyStatus.move_L = false;
+      datas.keyStatus.useDAS = false;
+      break;
+    case keys.move_R:
+      datas.keyStatus.move_R = false;
+      datas.keyStatus.useDAS = false;
+      break;
+    case keys.softDrop:
+      datas.keyStatus.softDrop = false;
+      break;
+  }
+}
+
+function keyAction (nowTime) {
+  if (!datas.keyStatus.useDAS) {
+    if (datas.keyStatus.move_L) {
+      if (checkMove(-1, 0)) {
+        datas.mino_x--;
+        datas.useSpin = false;
+      }
+      datas.keyStatus.useDAS = true;
+    }
+    if (datas.keyStatus.move_R) {
+      if (checkMove(1, 0)) {
+        datas.mino_x++;
+        datas.useSpin = false;
+      }
+      datas.keyStatus.useDAS = true;
+    }
+    datas.keyStatus.DAStime = performance.now();
+  }
+  if (datas.keyStatus.softDrop) {
+    let SDFrame = (nowTime - datas.keyStatus.softDrop_t) / 1000 * 60;
+    if (SDFrame > ARR_FRAME) {
+      if (checkMove(0, 1)) {
+        datas.stats.score += 1;
+        datas.mino_y++;
+        datas.useSpin = false;
+        if (!checkMove(0, 1)) {
+          if (!datas.onGround) {
+            datas.delayTime = performance.now();
+          }
+          datas.onGround = true;
+        } else if (datas.onGround) {
+          datas.actionCount++;
+          datas.onGround = false;
+        }
+      }
+    }
+  }
+  let DASFrame = (nowTime - datas.keyStatus.DAStime) / 1000 * 60;
+  if (DASFrame > DAS_FRAME) {
+    if (datas.keyStatus.move_L) {
+      let MLFrame = (nowTime - datas.keyStatus.move_L_t) / 1000 * 60;
+      if (MLFrame - DAS_FRAME > ARR_FRAME) {
+        if (checkMove(-1, 0)) {
+          datas.mino_x--;
+          datas.useSpin = false;
+        };
+      }
+    }
+    if (datas.keyStatus.move_R) {
+      let MRFrame = (nowTime - datas.keyStatus.move_R_t) / 1000 * 60;
+      if (MRFrame - DAS_FRAME > ARR_FRAME) {
+        if (checkMove(1, 0)) {
+          datas.mino_x++;
+          datas.useSpin = false;
+        };
+      }
+    }
+  }
+}
+
+document.onkeyup = function (e) {
+  if (situation === 'GAME') {
+    keyUp(e.key);
+  }
+}
+
 // キーボードイベント
 document.onkeydown = function (e) {
   switch (situation) {
     case "GAME": // ノーマルゲーム時
       switch (e.key) {
         case keys.move_L: // 左移動(←)
-          if (checkMove(-1, 0)) {
-            mino_x--;
-			useSpin = false;
-          }
-          break;
         case keys.move_R: // 右移動(→)
-          if (checkMove(1, 0)) {
-            mino_x++;
-			useSpin = false;
-		}
-          break;
         case keys.softDrop: // 下移動(↓)
-          if (checkMove(0, 1)) {
-            stats.score += 1;
-            mino_y++;
-			useSpin = false;
-		}
+          keyPush(e.key);
           break;
         case keys.hardDrop: // ハードドロップ(↑)
           hardDrop();
@@ -1238,7 +1381,17 @@ document.onkeydown = function (e) {
 			      	if (direction < 0) {
 			      		direction += 4;
 			      	}
-			      	useSpin = true;
+			      	datas.useSpin = true;
+              if (!checkMove(0, 1)) {
+                if (datas.onGround) {
+                  datas.actionCount++;
+                }
+                datas.delayTime = performance.now();
+                datas.onGround = true;
+              } else if (datas.onGround) {
+                datas.actionCount++;
+                datas.onGround = false;
+              }
 			      }
             if (minoNum === 1) {
               checkTSpin();
@@ -1249,9 +1402,18 @@ document.onkeydown = function (e) {
           if (minoNum != 6) {
             let rotated = rotateMino(e.key);
 			      if (rotated) {
-			      	direction += 1;
-			      	direction %= 4;
-			      	useSpin = true;
+			      	direction = (direction + 1) % 4;
+			      	datas.useSpin = true;
+              if (!checkMove(0, 1)) {
+                if (datas.onGround) {
+                  datas.actionCount++;
+                }
+                datas.delayTime = performance.now();
+                datas.onGround = true;
+              } else if (datas.onGround) {
+                datas.actionCount++;
+                datas.onGround = false;
+              }
 			      }
             if (minoNum === 1) {
               checkTSpin();
@@ -1261,31 +1423,33 @@ document.onkeydown = function (e) {
         case keys.hold:
           swapHold();
           break;
-		case 'Escape':
-			situation = 'PAUSE';
-			selectPos = 0;
+	    	case 'Escape':
+			    situation = 'PAUSE';
+			    datas.selectPos = 0;
+          datas.keyStatus = new InitialKeyStatus();
+          break;
       }
       drawAll();
       break;
 	case "PAUSE":
 		switch(e.key) {
 			case "ArrowUp":
-				selectPos--;
+				datas.selectPos--;
 				break;
 			case "ArrowDown":
-				selectPos++;
+				datas.selectPos++;
 				break;
 			case "Enter":
-				switch(selectPos){
+				switch(datas.selectPos){
 					case 0:
 						situation = 'GAME';
-						startTime += performance.now() - pauseTime;
+						datas.startTime += performance.now() - pauseTime;
 						mainLoop();
 						return;
 					case 1:
 						initialize('GAME')
 						spawnMino();
-          				drawAll();
+          	drawAll();
 						mainLoop();
 						return;
 					case 2:
@@ -1296,14 +1460,14 @@ document.onkeydown = function (e) {
 				break;
 			case "Escape":
 				situation = 'GAME';
-				startTime += performance.now() - pauseTime;
+				datas.startTime += performance.now() - pauseTime;
 				mainLoop();
 				return;
 		}
-		if (selectPos < 0) {
-			selectPos += 3;
+		if (datas.selectPos < 0) {
+			datas.selectPos += 3;
 		}
-		selectPos %= 3;
+		datas.selectPos %= 3;
 		drawAll();
 		drawPause();
 		break;
@@ -1316,48 +1480,48 @@ document.onkeydown = function (e) {
     case "TITLE": // タイトル画面時
       switch (e.key) {
         case "ArrowUp":
-          selectPos--;
+          datas.selectPos--;
           break;
         case "ArrowDown":
-          selectPos++;
+          datas.selectPos++;
           break;
         case "Enter":
-          if (selectPos === 0) {
+          if (datas.selectPos === 0) {
             initialize("GAME");
             spawnMino();
             drawAll();
             mainLoop();
             return;
-          } else if (selectPos === 1) {
+          } else if (datas.selectPos === 1) {
             initialize("CONFIG");
             drawConfig();
             return;
           }
           break;
       }
-      if (selectPos < 0) {
-        selectPos += 2;
+      if (datas.selectPos < 0) {
+        datas.selectPos += 2;
       }
-      selectPos %= 2;
+      datas.selectPos %= 2;
       drawTitle();
       break;
     case "CONFIG": // コンフィグ時
-      if (!configPromptMode) {
+      if (!datas.configPromptMode) {
         switch (e.key) {
           case "ArrowUp":
-            selectPos--;
+            datas.selectPos--;
             break;
           case "ArrowDown":
-            selectPos++;
+            datas.selectPos++;
             break;
           case "Enter":
-            if (selectPos === 7 || selectPos === 8) {
+            if (datas.selectPos === 7 || datas.selectPos === 8) {
               situation = "CONFIG_CONFIRM";
               drawConfigConfirm();
               return;
             } else {
               oldKeys = JSON.parse(JSON.stringify(keys));
-              configPromptMode = !configPromptMode;
+              datas.configPromptMode = !datas.configPromptMode;
               drawConfig();
             }
             break;
@@ -1366,10 +1530,10 @@ document.onkeydown = function (e) {
             drawTitle();
             return;
         }
-        if (selectPos < 0) {
-          selectPos += 9;
+        if (datas.selectPos < 0) {
+          datas.selectPos += 9;
         }
-        selectPos %= 9;
+        datas.selectPos %= 9;
         drawConfig();
         break;
       } else {
@@ -1391,7 +1555,7 @@ document.onkeydown = function (e) {
             confirmPos = 1;
             return;
           }
-          switch (selectPos) {
+          switch (datas.selectPos) {
             case 7:
               initialize("TITLE");
               drawTitle();
@@ -1399,7 +1563,7 @@ document.onkeydown = function (e) {
               return;
             case 8:
               situation = "CONFIG";
-              keys = new InitializeKeys();
+              keys = new InitialKeys();
 			  for (let p in keys) {
 				  document.cookie = p + '=; max-age=0';
 			  }
@@ -1427,18 +1591,23 @@ document.onkeydown = function (e) {
 // ゲーム本編メインループ
 function mainLoop() {
   let nowTime = performance.now();
-  let nowFrame = (nowTime - startTime) / gameSpeed;
+  let speed = (0.8 - ((datas.stats.level - 1) * 0.007)) ** (datas.stats.level - 1) * 1000;
+  let nowFrame = (nowTime - datas.startTime) / speed;
   switch (situation) {
     case "GAME":
-      if (nowFrame > frameCount) {
+      if (nowFrame > datas.frameCount) {
         let c = 0;
-        while (nowFrame > frameCount) {
-          frameCount++;
+        while (nowFrame > datas.frameCount) {
+          datas.frameCount++;
             dropMino();
             if (++c >= 4) {
             break;
           }
         }
+      }
+      keyAction(nowTime);
+      if (checkLockDelay()) {
+        fixMino();
       }
       drawAll();
       requestAnimationFrame(mainLoop);
@@ -1446,13 +1615,14 @@ function mainLoop() {
     case "CLEAR_EFFECT":
       let elapsedTime = nowTime - clearTime;
       if (elapsedTime >= 500) {
-        for (let line of alignLine) {
+        for (let line of datas.alignLine) {
           field.splice(line, 1);
           field.unshift(FIELD_TEMPLATE.slice());
-          stats.lines++;
+          datas.stats.lines++;
         }
-        alignLine = [];
-        startTime += elapsedTime;
+        levelUp();
+        datas.alignLine = [];
+        datas.startTime += elapsedTime;
         situation = "GAME";
       }
       drawAll();
@@ -1473,7 +1643,7 @@ function mainLoop() {
 
 // 画面読み込み時の処理
 window.onload = function () {
-  startTime = performance.now();
+  datas.startTime = performance.now();
   setKeysByCookie();
   window.addEventListener("keydown", keydownfunc, true);
 };
@@ -1503,29 +1673,3 @@ WebFont.load({
     drawTitle();
   },
 });
-
-let debug = [
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8],
-  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
-  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
-  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
-  [8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 8],
-  [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
-];
