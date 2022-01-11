@@ -1,5 +1,7 @@
 "use strict";
 
+const VERSION = "ver.0.1.3"
+
 // キャンバス情報取得
 const CANVAS = document.getElementById("tet_field");
 const CONTEXT = CANVAS.getContext("2d");
@@ -54,6 +56,15 @@ class InitialKeys {
     this.hold = "Shift";
   }
 }
+
+class highScore {
+  constructor() {
+    this.name = '___';
+    this.level = 0;
+    this.lines = 0;
+    this.score = 0;
+  }
+}
 class InitialStats {
   // デフォルトの成績ステータス
   constructor() {
@@ -79,7 +90,6 @@ class InitialKeyStatus {
 class InitialDatas {
   constructor() {
     this.selectPos = 0; // メニュー時選択箇所
-    this.configPromptMode = false; // キーコンフィグ入力待機
     this.startTime = performance.now(); // ループ開始時間
     this.minoBag = []; // ミノバッグ
     this.frameCount = 0; // ループ時のフレームカウント
@@ -105,8 +115,13 @@ class InitialDatas {
     this.perfect = false; // パーフェクトクリアフラグ
     this.keyStatus = new InitialKeyStatus(); // キー押下フラグ
     this.actionCount = 0; // 行動回数
-    this.delayTime = 0;
-    this.onGround = false;
+    this.lowestRow = 0;
+    this.delayTime = 0; // ロックディレイ開始時間
+    this.onGround = false; // 接地フラグ
+    this.gameOverTime = 0; // ゲームクリア時間
+    this.result = ''; // ゲーム結果
+    this.hsFlag = ''; // ハイスコアフラグ
+    this.mode = ''; // ゲームモード
   }
 }
 
@@ -130,6 +145,21 @@ let clearTime; // ライン消去エフェクト開始時間
 let mesTime = 0; // 加点メッセージ生成時間
 let pauseTime; // ポーズした時間
 let allCookies = getCookies(); // クッキーの連想配列
+let highScores = { // ハイスコアデータ
+  normal: {
+    hs1: new highScore(),
+    hs2: new highScore(),
+    hs3: new highScore(),
+    hs4: new highScore(),
+    hs5: new highScore()
+  }
+}
+let userName = '___'; // ハイスコア用ユーザ－名
+let configPromptMode = false; // キーコンフィグ入力待機
+let confirmMode = 'none'; // 確認ボックスの用途
+let diagText = ''; // 確認ボックス用ダイアログメッセージ
+let resultSwitch = true; // リザルト画面のスイッチ
+let hsSwitch = true; // ハイスコア画面のスイッチ
 
 // キャンバス描画サイズ指定
 CANVAS.setAttribute("width", CANVAS_W);
@@ -455,7 +485,7 @@ function drawStatus() {
 }
 
 // 加点メッセージを描画
-function drawPointMes () {
+function drawPointMes() {
   let elapsedTime = performance.now() - mesTime;
   if (elapsedTime < 2000) {
     let tlist = datas.compPointMes.split('\n');
@@ -466,7 +496,7 @@ function drawPointMes () {
 }
 
 // 列消去エフェクトを描画
-function drawClearEffect () {
+function drawClearEffect() {
   let alpha = 1 - (performance.now() - clearTime) / 500;
   CONTEXT.fillStyle = `rgba(221, 221, 221, ${alpha})`;
   for (let i of datas.alignLine) {
@@ -475,7 +505,7 @@ function drawClearEffect () {
 }
 
 // ミノ固定エフェクトを描画
-function drawFixEffect () {
+function drawFixEffect() {
   let count = 0;
   let del = 0;
   for (let li of datas.fixedCol) {
@@ -484,9 +514,9 @@ function drawFixEffect () {
     for (let i = 0; i < li.length; i += 2) {
       if (!y_list.includes(li[i + 1])) {
         let grad = CONTEXT.createLinearGradient(0, 0, 0, (li[i] + 1) * BLOCK_SIZE)
-        let alpha =  34 + 187 * (1 - elapsedTime / 500)
-        grad.addColorStop(0.0 , 'rgb(34, 34, 34)');
-        grad.addColorStop(1.0 , `rgb(${alpha}, ${alpha}, ${alpha})`);
+        let alpha = 34 + 187 * (1 - elapsedTime / 500)
+        grad.addColorStop(0.0, 'rgb(34, 34, 34)');
+        grad.addColorStop(1.0, `rgb(${alpha}, ${alpha}, ${alpha})`);
         CONTEXT.fillStyle = grad;
         CONTEXT.fillRect(li[i + 1] * BLOCK_SIZE + MARGIN, 0, BLOCK_SIZE, (li[i] - 1.5) * BLOCK_SIZE)
         y_list.push(li[i + 1]);
@@ -597,7 +627,7 @@ function checkMove(x, y, newMino) {
 
 // 回転処理
 function rotateMino(key) {
-	let rotated = false;
+  let rotated = false;
   let newMinoMap = buildMinoMap(minoNum, true);
   for (let i = 0; i < minoLength; i++) {
     for (let j = 0; j < minoLength; j++) {
@@ -613,28 +643,28 @@ function rotateMino(key) {
     }
   }
   if (checkMove(0, 0, newMinoMap)) {
-		currentMino = newMinoMap;
-		rotated = true;
-	} else {
-		rotated = srs(key, newMinoMap);
-	}
+    currentMino = newMinoMap;
+    rotated = true;
+  } else {
+    rotated = srs(key, newMinoMap);
+  }
   return rotated;
 }
 
 // TSpin成否チェック
-function checkTSpin () {
-	let count = 0;
-	const CHECK_POINT = [0, 0, 0, 2, 2, 0, 2, 2];
+function checkTSpin() {
+  let count = 0;
+  const CHECK_POINT = [0, 0, 0, 2, 2, 0, 2, 2];
   let checkMini = false;
   let pointStats = '';
-	for (let i = 0; i < 8; i += 2) {
-		if (field[datas.mino_y + CHECK_POINT[i]][datas.mino_x + CHECK_POINT[i + 1]]) {
-			count++;
+  for (let i = 0; i < 8; i += 2) {
+    if (field[datas.mino_y + CHECK_POINT[i]][datas.mino_x + CHECK_POINT[i + 1]]) {
+      count++;
       pointStats += '1';
-		} else {
+    } else {
       pointStats += '0';
     }
-	}
+  }
   if (count === 3) {
     let target;
     switch (direction) {
@@ -655,12 +685,12 @@ function checkTSpin () {
       checkMini = true;
     }
   }
-	if (count >= 3 && datas.useSpin) {
-		datas.useTSpin = true;
+  if (count >= 3 && datas.useSpin) {
+    datas.useTSpin = true;
     if (checkMini && datas.srsPattern != 4) {
       datas.useTSpinMini = true;
     }
-	}
+  }
   datas.srsPattern = 0;
 }
 
@@ -734,7 +764,7 @@ function srs(key, newMino) {
     }
   }
   for (let i = 0; i <= 6; i += 2) {
-	datas.srsPattern++;
+    datas.srsPattern++;
     if (checkMove(srsPosition[i], srsPosition[i + 1], newMino)) {
       currentMino = newMino;
       datas.mino_x += srsPosition[i];
@@ -746,7 +776,7 @@ function srs(key, newMino) {
 }
 
 // ロックディレイ
-function checkLockDelay () {
+function checkLockDelay() {
   if (datas.onGround) {
     let dt = performance.now() - datas.delayTime;
     if (datas.actionCount >= MAX_ACTION || dt >= 500) {
@@ -791,15 +821,18 @@ function fixMino() {
 // 自動落下
 function dropMino() {
   if (checkMove(0, 1)) {
-	  datas.useSpin = false;
+    datas.useSpin = false;
     datas.mino_y++;
     if (!checkMove(0, 1)) {
       if (!datas.onGround) {
         datas.delayTime = performance.now();
       }
+      datas.lowestRow = datas.mino_y;
       datas.onGround = true;
     } else if (datas.onGround) {
-      datas.actionCount++;
+      if (datas.lowestRow <= datas.mino_y){
+        datas.actionCount = 0;
+      }
       datas.onGround = false;
     }
   }
@@ -833,6 +866,9 @@ function swapHold() {
       datas.mino_y = 0;
       direction = 0;
     }
+    datas.actionCount = 0;
+    datas.delayTime = 0;
+    datas.onGround = false;
     datas.useHold = true;
   }
 }
@@ -853,7 +889,7 @@ function checkLine() {
 }
 
 // 加点メッセージを生成
-function calcTSpinPoint () {
+function calcTSpinPoint() {
   if (datas.useTSpin) {
     datas.pointMes += 'T-Spin\n';
     if (datas.alignLine.length > 0) {
@@ -884,24 +920,24 @@ function calcPoint() {
   let pBonus = 0;
   switch (datas.alignLine.length) {
     case 1:
-		  datas.pointMes += 'SINGLE\n';
-  		datas.additionPoint += 100 * (datas.stats.level);
+      datas.pointMes += 'SINGLE\n';
+      datas.additionPoint += 100 * (datas.stats.level);
       pBonus = 800 * (datas.stats.level);
       break;
     case 2:
-	  	datas.pointMes += 'DOUBLE\n';
-	  	datas.additionPoint += 300 * (datas.stats.level);
+      datas.pointMes += 'DOUBLE\n';
+      datas.additionPoint += 300 * (datas.stats.level);
       pBonus = 1200 * (datas.stats.level);
       break;
     case 3:
-	  	datas.pointMes += 'TRIPLE\n';
-	  	datas.additionPoint += 500 * (datas.stats.level);
+      datas.pointMes += 'TRIPLE\n';
+      datas.additionPoint += 500 * (datas.stats.level);
       pBonus = 1800 * (datas.stats.level);
       break;
     case 4:
-	  	datas.pointMes += 'TETRiS\n';
+      datas.pointMes += 'TETRiS\n';
       datas.btb = true;
-	  	datas.additionPoint += 800 * (datas.stats.level);
+      datas.additionPoint += 800 * (datas.stats.level);
       pBonus = 2000 * (datas.stats.level);
       break;
   }
@@ -912,7 +948,7 @@ function calcPoint() {
 }
 
 // 合計得点を計算
-function calcTotalPoint () {
+function calcTotalPoint() {
   if (datas.additionPoint) {
     if (datas.btb && datas.btbFlag) {
       datas.additionPoint = Math.round(datas.additionPoint * 1.5);
@@ -949,7 +985,7 @@ function clearLine() {
 }
 
 // レベルアップ
-function levelUp () {
+function levelUp() {
   if (datas.stats.lines >= datas.stats.level * 10) {
     datas.stats.level++;
     datas.startTime = performance.now();
@@ -957,8 +993,17 @@ function levelUp () {
   }
 }
 
+// ゲームクリアチェック
+function checkGameClear() {
+  if (datas.stats.lines >= 150) {
+    situation = "GAME_OVER_EFFECT";
+    datas.result = 'CLEAR';
+    datas.gameOverTime = performance.now();
+  }
+}
+
 // パーフェクトクリアチェック
-function checkPerfect () {
+function checkPerfect() {
   datas.perfect = true;
   for (let i = 1; i < FIELD_ROW - 1; i++) {
     for (let j = 1; j < FIELD_COL - 1; j++) {
@@ -978,7 +1023,9 @@ function checkLineOver() {
         if (datas.mino_y + i <= 1) {
           lineOverCount++;
           if (lineOverCount === 4) {
-            situation = "GAME_OVER";
+            situation = "GAME_OVER_EFFECT";
+            datas.result = "OVER";
+            datas.gameOverTime = performance.now();
             return;
           }
         }
@@ -993,7 +1040,9 @@ function checkCollision() {
     for (let j = 0; j < minoLength; j++) {
       if (currentMino[i][j]) {
         if (field[datas.mino_y + i][datas.mino_x + j]) {
-          situation = "GAME_OVER";
+          situation = "GAME_OVER_EFFECT";
+          datas.result = "OVER";
+          datas.gameOverTime = performance.now();
           return;
         }
       }
@@ -1002,8 +1051,8 @@ function checkCollision() {
 }
 
 // 各種変数の初期化
-function initialize(mode) {
-  situation = mode;
+function initialize(sit) {
+  situation = sit;
   datas = new InitialDatas();
   field = [];
   field = buildFieldMap();
@@ -1017,56 +1066,255 @@ function drawTitle() {
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
   drawStrokeText("TETLiS", 0, -60, 70, "#ddd", "bold");
   drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
-  drawFillText("KEY CONFiG", 0, 30, 20, "#ddd", "bold");
-  drawFillText("Press ENTER to start!", 0, 100, 20, "#ddd", "bold");
+  drawFillText("HiGH SCORES", 0, 30, 20, "#ddd", "bold");
+  drawFillText("KEY CONFiG", 0, 60, 20, "#ddd", "bold");
+  drawFillText("Press ENTER to start!", 0, 130, 20, "#ddd", "bold");
   drawFillText("->", -140, datas.selectPos * 30, 20, "#ddd", "bold");
-  drawFillText('ver.0.1.2', 170, 200, 12, '#ddd', 'normal');
+  drawFillText(VERSION, 170, 200, 12, '#ddd', 'normal');
 }
 
 // ポーズメニュー描画
 function drawPause() {
-	CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)"
-	CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
-	drawFillText("PAUSE", 0, -60, 70, "#222", "bold");
-	drawStrokeText("PAUSE", 0, -60, 70, "#ddd", "bold");
-	drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
-	drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
-	drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
-	drawFillText("->", -100, datas.selectPos * 30, 20, "#ddd", "bold");
-}
-
-// ゲームオーバー表示描画
-function drawGameOver() {
   CONTEXT.fillStyle = "rgba(34, 34, 34, 0.8)"
   CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
-  drawFillText("GAME", 0, -20, "80", "#222", "bold");
-  drawStrokeText("GAME", 0, -20, "80", "#ddd", "bold");
-  drawFillText("OVER", 0, 70, "80", "#222", "bold");
-  drawStrokeText("OVER", 0, 70, "80", "#ddd", "bold");
-  drawFillText("Press SPACE", 0, 140, "30", "#222", "normal");
-  drawStrokeText("Press SPACE", 0, 140, "30", "#ddd", "bold");
+  drawFillText("PAUSE", 0, -60, 70, "#222", "bold");
+  drawStrokeText("PAUSE", 0, -60, 70, "#ddd", "bold");
+  drawFillText("RETURN", 0, 0, 20, "#ddd", "bold");
+  drawFillText("RESTART", 0, 30, 20, "#ddd", "bold");
+  drawFillText("TiTLE", 0, 60, 20, "#ddd", "bold");
+  drawFillText("->", -100, datas.selectPos * 30, 20, "#ddd", "bold");
+}
+
+// ゲーム終了画面描画
+function drawGameOverEffect() {
+  let now = performance.now();
+  for (let i = 0; i < FIELD_ROW; i++) {
+    let alpha = i * -0.05 + (now - datas.gameOverTime) / 500;
+    CONTEXT.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    CONTEXT.fillRect(0, (FIELD_ROW - i - 1.5) * BLOCK_SIZE, CANVAS_W, BLOCK_SIZE)
+  }
+  if (now - datas.gameOverTime > 1000) {
+    drawGameResult();
+    for (let i = 0; i < FIELD_ROW; i++) {
+      let alpha = 1 - (i * -0.05 + (now - datas.gameOverTime - 1000) / 500);
+      CONTEXT.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      CONTEXT.fillRect(0, (FIELD_ROW - i - 1.5) * BLOCK_SIZE, CANVAS_W, BLOCK_SIZE)
+    }
+  }
+  if (now - datas.gameOverTime > 2000) {
+    situation = 'RESULT';
+  }
+}
+
+// リザルト画面描画
+function drawGameResult() {
+  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
+  CONTEXT.fillStyle = "#222";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  drawFillText("GAME", 0, -140, 55, "#222", "bold");
+  drawStrokeText("GAME", 0, -140, 55, "#ddd", "bold");
+  drawFillText(datas.result, 0, -70, 55, "#222", "bold");
+  drawStrokeText(datas.result, 0, -70, 55, "#ddd", "bold");
+  drawFillText('-RESULT-', 0, -20, '30', '#ddd', 'normal')
+  CONTEXT.fillStyle = '#ddd';
+  CONTEXT.font = 'normal 20px "Press Start 2P"';
+  CONTEXT.fillText(`LEVEL : ${datas.stats.level}`, 110, 230)
+  CONTEXT.fillText(`LINES : ${datas.stats.lines}`, 110, 260)
+  CONTEXT.fillText(`SCORE : ${datas.stats.score}`, 110, 290)
+  if (checkHighScore()) {
+    drawFillText('HiGH SCORE!!', 0, 130, '30', '#ddd', 'normal');
+    drawFillText('SHOW LAST SCREEN: Tab', 0, 170, '16', '#ddd', 'normal');
+    drawFillText('CONTiNUE: Space', 0, 200, '16', '#ddd', 'normal');
+  } else {
+    drawFillText('Press SPACE', 0, 160, '16', '#ddd', 'normal');
+  }
+}
+
+function checkHighScore() {
+  if (highScores[datas.mode].hs1.score < datas.stats.score) {
+    datas.hsFlag = 'hs1';
+    return true;
+  } else if (highScores[datas.mode].hs2.score < datas.stats.score) {
+    datas.hsFlag = 'hs2';
+    return true;
+  } else if (highScores[datas.mode].hs3.score < datas.stats.score) {
+    datas.hsFlag = 'hs3';
+    return true;
+  } else if (highScores[datas.mode].hs4.score < datas.stats.score) {
+    datas.hsFlag = 'hs4';
+    return true;
+  } else if (highScores[datas.mode].hs5.score < datas.stats.score) {
+    datas.hsFlag = 'hs5';
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function drawHSPrompt() {
+  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
+  CONTEXT.fillStyle = "#222";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  drawFillText('HiGH SCORE!!', 0, -150, 35, '#ddd', 'bold');
+  drawFillText('Enter your name!', 0, -100, 20, '#ddd', 'bold');
+  drawFillText(userName, 0, 0, 40, '#ddd', 'bold');
+  drawFillText('ERASE: Back Space', 0, 170, 16, '#ddd', 'bold')
+  drawFillText('SUBMiT: Enter / CANCEL: Esc', 0, 200, 16, '#ddd', 'bold');
+}
+
+function saveHighScore() {
+  let currentHS = highScores[datas.mode];
+  let oldHS = JSON.parse(JSON.stringify(highScores[datas.mode]));
+  switch (datas.hsFlag) {
+    case 'hs1':
+      currentHS.hs5 = oldHS.hs4;
+      currentHS.hs4 = oldHS.hs3;
+      currentHS.hs3 = oldHS.hs2;
+      currentHS.hs2 = oldHS.hs1;
+      currentHS.hs1 = {
+        name: userName,
+        level: datas.stats.level,
+        lines: datas.stats.lines,
+        score: datas.stats.score,
+      };
+      break;
+    case 'hs2':
+      currentHS.hs5 = oldHS.hs4;
+      currentHS.hs4 = oldHS.hs3;
+      currentHS.hs3 = oldHS.hs2;
+      currentHS.hs2 = {
+        name: userName,
+        level: datas.stats.level,
+        lines: datas.stats.lines,
+        score: datas.stats.score,
+      };
+      break;
+    case 'hs3':
+      currentHS.hs5 = oldHS.hs4;
+      currentHS.hs4 = oldHS.hs3;
+      currentHS.hs3 = {
+        name: userName,
+        level: datas.stats.level,
+        lines: datas.stats.lines,
+        score: datas.stats.score,
+      };
+      break;
+    case 'hs4':
+      currentHS.hs5 = oldHS.hs4;
+      currentHS.hs4 = {
+        name: userName,
+        level: datas.stats.level,
+        lines: datas.stats.lines,
+        score: datas.stats.score,
+      };
+      break;
+    case 'hs5':
+      currentHS.hs5 = {
+        name: userName,
+        level: datas.stats.level,
+        lines: datas.stats.lines,
+        score: datas.stats.score,
+      };
+      break;
+  }
+  for (let rank in currentHS) {
+    for (let p in currentHS[rank]) {
+      setCookie(`${datas.mode}-${rank}-${p}`, currentHS[rank][p])
+    }
+  }
+}
+
+function setCookie(name, value) {
+  document.cookie = name + '=' + encodeURIComponent(value) + ';max-age=315360000';
 }
 
 // クッキーを連想配列で取得
-function getCookies () {
-	let result = [];
-	if (document.cookie != '') {
-		const TMP = document.cookie.split('; ');
-		for (let i = 0; i < TMP.length; i++) {
-			let data = TMP[i].split('=');
-			result[data[0]] = decodeURIComponent(data[1]);
-		}
-	}
-	return result;
+function getCookies() {
+  let result = [];
+  if (document.cookie != '') {
+    const TMP = document.cookie.split('; ');
+    for (let i = 0; i < TMP.length; i++) {
+      let data = TMP[i].split('=');
+      result[data[0]] = decodeURIComponent(data[1]);
+    }
+  }
+  return result;
 }
 
 // クッキーからキーコンフィグ状態を反映
-function setKeysByCookie () {
-	for (let p in keys) {
-		if (allCookies[p] != undefined) {
-			keys[p] = allCookies[p];
-		}
-	}
+function setByCookie() {
+  for (let p in keys) {
+    if (allCookies[p] != undefined) {
+      keys[p] = allCookies[p];
+    }
+  }
+  for (let mode in highScores) {
+    for (let rank in highScores[mode]) {
+      if (allCookies[`${mode}-${rank}-name`] != undefined) {
+        highScores[mode][rank]['name'] = allCookies[`${mode}-${rank}-name`];
+        highScores[mode][rank]['level'] = allCookies[`${mode}-${rank}-level`];
+        highScores[mode][rank]['lines'] = allCookies[`${mode}-${rank}-lines`];
+        highScores[mode][rank]['score'] = allCookies[`${mode}-${rank}-score`];
+      }
+    }
+  }
+}
+
+// ハイスコア画面描画
+function drawHighScore () {
+  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
+  CONTEXT.beginPath();
+  CONTEXT.fillStyle = "#222";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  drawFillText("HiGH SCORES", 0, -150, 40, "#ddd", "bold");
+  drawFillText(datas.mode.toUpperCase(), 0, -100, 30, "#ddd", "normal");
+  let count = 0;
+  CONTEXT.font = 'normal 16px "Press Start 2P"'
+  CONTEXT.fillText('NAME', 110, 155);
+  CONTEXT.fillText('1st', 40, 185);
+  CONTEXT.fillText('2nd', 40, 215);
+  CONTEXT.fillText('3rd', 40, 245);
+  CONTEXT.fillText('4th', 40, 275);
+  CONTEXT.fillText('5th', 40, 305);
+  if (hsSwitch) {
+    CONTEXT.fillText('SCORE', 290, 155);
+    for (let rank in highScores[datas.mode]) {
+      let t = highScores[datas.mode][rank].score;
+      let y = 185 + count * 30;
+      let x = 330 - CONTEXT.measureText(t).width / 2;
+      CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
+      CONTEXT.fillText(t, x, y);
+      count++;
+    }
+  } else {
+    CONTEXT.fillText('SCORE', 190, 155);
+    CONTEXT.fillText('LINES', 290, 155);
+    CONTEXT.fillText('LEVEL', 390, 155);
+    for (let rank in highScores[datas.mode]) {
+      let t = highScores[datas.mode][rank].score;
+      if (t > 1000000000) {
+        t = '999M+';
+      } else if (t > 1000000) {
+        t = Math.floor(t / 1000000);
+        t += 'M';
+      } else if (t > 1000) {
+        t = Math.floor(t / 1000);
+        t += 'K';
+      }
+      let y = 185 + count * 30;
+      let x = CONTEXT.measureText(t).width / 2;
+      CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
+      CONTEXT.fillText(t, 230 - x, y);
+      x = CONTEXT.measureText(highScores[datas.mode][rank].lines).width / 2;
+      CONTEXT.fillText(highScores[datas.mode][rank].lines, 330 - x, y);
+      x = CONTEXT.measureText(highScores[datas.mode][rank].level).width / 2;
+      CONTEXT.fillText(highScores[datas.mode][rank].level, 430 - x, y);
+      count++;
+    }
+  }
+  // drawFillText('CHANGE GAME MODE: Space', 0, 140, 16, '#ddd', 'bold');
+  drawFillText('CHANGE DiSPLAY: Tab', 0, 170, 16, '#ddd', 'bold');
+  drawFillText('BACK TO TiTLE: Esc', 0, 200, 16, '#ddd', 'bold');
 }
 
 // キーコンフィグ描画
@@ -1080,7 +1328,6 @@ function drawConfig() {
   let ny;
   let t;
   let arrow_y;
-  let key;
   for (let p in keys) {
     let key = keys[p];
     switch (key) {
@@ -1135,7 +1382,7 @@ function drawConfig() {
     } else {
       arrow_y = datas.selectPos * 30 - 100;
     }
-    if (datas.configPromptMode) {
+    if (configPromptMode) {
       key = "_";
       switch (datas.selectPos) {
         case 0:
@@ -1194,52 +1441,54 @@ function changeKey(key) {
   switch (datas.selectPos) {
     case 0:
       keys.move_L = key;
-	  document.cookie = 'move_L=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('move_L', key);
       break;
     case 1:
       keys.move_R = key;
-	  document.cookie = 'move_R=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('move_R', key);
       break;
     case 2:
       keys.softDrop = key;
-	  document.cookie = 'softDrop=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('softDrop', key);
       break;
     case 3:
       keys.hardDrop = key;
-	  document.cookie = 'hardDrop=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('hardDrop', key);
       break;
     case 4:
       keys.rotate_L = key;
-	  document.cookie = 'rotate_L=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('rotate_L', key);
       break;
     case 5:
       keys.rotate_R = key;
-	  document.cookie = 'rotate_R=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('rotate_R', key);
       break;
     case 6:
       keys.hold = key;
-	  document.cookie = 'hold=' + encodeURIComponent(key) + ';max-age=315360000';
+      setCookie('hold', key);
       break;
   }
-  datas.configPromptMode = !datas.configPromptMode;
+  configPromptMode = !configPromptMode;
   drawConfig();
 }
 
 // コンフィグ確認画面描画
-function drawConfigConfirm() {
-  let w = 300;
-  let h = 100;
+function drawConfirmDiag() {
+  let w = 380;
+  let h = 110;
+  CONTEXT.beginPath();
   CONTEXT.fillStyle = "#222";
   CONTEXT.lineWidth = 1;
   CONTEXT.rect(CANVAS_W / 2 - w / 2, CANVAS_H / 2 - h / 2, w, h);
   CONTEXT.fill();
   CONTEXT.stroke();
-  drawFillText("Are you sure?", 0, -10, 20, "#ddd", "bold");
-  drawFillText("yes   no", 0, 30, 20, "#ddd", "bold");
+  drawFillText(diagText, 0, -25, 20, "#ddd", "bold");
+  drawFillText("Are you sure?", 0, 10, 20, "#ddd", "bold");
+  drawFillText("yes   no", 0, 40, 20, "#ddd", "bold");
   if (confirmPos === 0) {
-    drawFillText("[    ]", -50, 30, 20, "#ddd", "bold");
+    drawFillText("[    ]", -50, 42.5, 20, "#ddd", "bold");
   } else {
-    drawFillText("[    ]", 60, 30, 20, "#ddd", "bold");
+    drawFillText("[    ]", 60, 42.5, 20, "#ddd", "bold");
   }
 }
 
@@ -1253,8 +1502,37 @@ document.getElementById("download").onclick = (event) => {
   link.click();
 };
 
+// 確認ボックス
+function drawConfirm(key) {
+  switch (key) {
+    case "ArrowLeft":
+      confirmPos--;
+      break;
+    case "ArrowRight":
+      confirmPos++;
+      break;
+    case "Enter":
+      if (confirmPos === 1) {
+        confirmPos = 1;
+        return 'no';
+      } else {
+        confirmPos = 1;
+        return 'yes';
+      }
+    case "Escape":
+      confirmPos = 1;
+      return 'no';
+  }
+  if (confirmPos < 0) {
+    confirmPos += 2;
+  }
+  confirmPos %= 2;
+  drawConfirmDiag();
+  return '';
+}
+
 // キー押下処理
-function keyPush (key) {
+function keyPush(key) {
   switch (key) {
     case keys.move_L:
       if (!datas.keyStatus.move_L) {
@@ -1278,7 +1556,7 @@ function keyPush (key) {
 }
 
 // キー離上処理
-function keyUp (key) {
+function keyUp(key) {
   switch (key) {
     case keys.move_L:
       datas.keyStatus.move_L = false;
@@ -1294,12 +1572,21 @@ function keyUp (key) {
   }
 }
 
-function keyAction (nowTime) {
+function keyAction(nowTime) {
   if (!datas.keyStatus.useDAS) {
     if (datas.keyStatus.move_L) {
       if (checkMove(-1, 0)) {
         datas.mino_x--;
         datas.useSpin = false;
+        if (!checkMove(0, 1)) {
+          if (!datas.onGround) {
+            datas.delayTime = performance.now();
+          }
+          datas.onGround = true;
+        } else if (datas.onGround) {
+          datas.actionCount++;
+          datas.onGround = false;
+        }
       }
       datas.keyStatus.useDAS = true;
     }
@@ -1307,6 +1594,15 @@ function keyAction (nowTime) {
       if (checkMove(1, 0)) {
         datas.mino_x++;
         datas.useSpin = false;
+        if (!checkMove(0, 1)) {
+          if (!datas.onGround) {
+            datas.delayTime = performance.now();
+          }
+          datas.onGround = true;
+        } else if (datas.onGround) {
+          datas.actionCount++;
+          datas.onGround = false;
+        }
       }
       datas.keyStatus.useDAS = true;
     }
@@ -1323,9 +1619,12 @@ function keyAction (nowTime) {
           if (!datas.onGround) {
             datas.delayTime = performance.now();
           }
+          datas.lowestRow = datas.mino_y;
           datas.onGround = true;
         } else if (datas.onGround) {
-          datas.actionCount++;
+          if (datas.lowestRow <= datas.mino_y){
+            datas.actionCount = 0;
+          }
           datas.onGround = false;
         }
       }
@@ -1376,12 +1675,12 @@ document.onkeydown = function (e) {
         case keys.rotate_L: // 左回転(a)
           if (minoNum != 6) {
             let rotated = rotateMino(e.key);
-			      if (rotated) {
-			      	direction -= 1;
-			      	if (direction < 0) {
-			      		direction += 4;
-			      	}
-			      	datas.useSpin = true;
+            if (rotated) {
+              direction -= 1;
+              if (direction < 0) {
+                direction += 4;
+              }
+              datas.useSpin = true;
               if (!checkMove(0, 1)) {
                 if (datas.onGround) {
                   datas.actionCount++;
@@ -1392,18 +1691,18 @@ document.onkeydown = function (e) {
                 datas.actionCount++;
                 datas.onGround = false;
               }
-			      }
+            }
             if (minoNum === 1) {
               checkTSpin();
             }
           }
-			    break;
+          break;
         case keys.rotate_R: // 右回転(d)
           if (minoNum != 6) {
             let rotated = rotateMino(e.key);
-			      if (rotated) {
-			      	direction = (direction + 1) % 4;
-			      	datas.useSpin = true;
+            if (rotated) {
+              direction = (direction + 1) % 4;
+              datas.useSpin = true;
               if (!checkMove(0, 1)) {
                 if (datas.onGround) {
                   datas.actionCount++;
@@ -1414,69 +1713,148 @@ document.onkeydown = function (e) {
                 datas.actionCount++;
                 datas.onGround = false;
               }
-			      }
+            }
             if (minoNum === 1) {
               checkTSpin();
             }
-				    break;
+            break;
           }
         case keys.hold:
           swapHold();
           break;
-	    	case 'Escape':
-			    situation = 'PAUSE';
-			    datas.selectPos = 0;
+        case 'Escape':
+          situation = 'PAUSE';
+          datas.selectPos = 0;
           datas.keyStatus = new InitialKeyStatus();
           break;
       }
       drawAll();
       break;
-	case "PAUSE":
-		switch(e.key) {
-			case "ArrowUp":
-				datas.selectPos--;
-				break;
-			case "ArrowDown":
-				datas.selectPos++;
-				break;
-			case "Enter":
-				switch(datas.selectPos){
-					case 0:
-						situation = 'GAME';
-						datas.startTime += performance.now() - pauseTime;
-						mainLoop();
-						return;
-					case 1:
-						initialize('GAME')
-						spawnMino();
-          	drawAll();
-						mainLoop();
-						return;
-					case 2:
-						initialize("TITLE");
-						drawTitle();
-						return;
-				}
-				break;
-			case "Escape":
-				situation = 'GAME';
-				datas.startTime += performance.now() - pauseTime;
-				mainLoop();
-				return;
-		}
-		if (datas.selectPos < 0) {
-			datas.selectPos += 3;
-		}
-		datas.selectPos %= 3;
-		drawAll();
-		drawPause();
-		break;
-    case "GAME_OVER": // ゲームオーバー時
-      if (e.key === " ") {
-        initialize("TITLE");
-        drawTitle();
+    case "PAUSE":
+      switch (e.key) {
+        case "ArrowUp":
+          datas.selectPos--;
+          break;
+        case "ArrowDown":
+          datas.selectPos++;
+          break;
+        case "Enter":
+          switch (datas.selectPos) {
+            case 0:
+              situation = 'GAME';
+              datas.startTime += performance.now() - pauseTime;
+              mainLoop();
+              return;
+            case 1:
+              initialize('GAME')
+              spawnMino();
+              drawAll();
+              mainLoop();
+              return;
+            case 2:
+              initialize("TITLE");
+              drawTitle();
+              return;
+          }
+          break;
+        case "Escape":
+          situation = 'GAME';
+          datas.startTime += performance.now() - pauseTime;
+          mainLoop();
+          return;
+      }
+      if (datas.selectPos < 0) {
+        datas.selectPos += 3;
+      }
+      datas.selectPos %= 3;
+      drawAll();
+      drawPause();
+      break;
+    case 'RESULT':
+      if (e.key === ' ') {
+        if (resultSwitch) {
+          if (datas.hsFlag === '') {
+            initialize("TITLE");
+            drawTitle();
+            return;
+          } else {
+            situation = 'HS_PROMPT';
+            drawHSPrompt();
+            return;
+          }
+        }
+      } else if (e.key === 'Tab') {
+        if (resultSwitch) {
+          datas.fixedCol = [];
+          drawAll();
+        } else {
+          drawGameResult();
+        }
+        resultSwitch = !resultSwitch;
       }
       break;
+    case 'HS_PROMPT':
+      if (confirmMode === 'none') {
+        let canUse = 'abcdefghijklmnopqrstuvwxyz123456789.,-/*+@';
+        if (canUse.includes(e.key)) {
+          if (userName.replace('_', '').length < 3) {
+            userName = userName.replace(/_/g, '');
+            userName = userName + e.key.toUpperCase();
+            userName = userName.padEnd(3, '_');
+          }
+        } else {
+          switch (e.key) {
+            case 'Backspace':
+              userName = userName.replace(/_/g, '');
+              userName = userName.slice(0, -1);
+              userName = userName.padEnd(3, '_');
+              break;
+            case 'Enter':
+              if (!userName.includes('_')) {
+                confirmMode = 'name';
+                diagText = `Your name is "${userName}"`;
+                drawConfirmDiag()
+                return;
+              } else {
+                drawHSPrompt();
+                drawFillText('Please enter', 0, 60, 30, '#ddd', 'normal');
+                drawFillText('your name!', 0, 100, 30, '#ddd', 'normal');
+                return;
+              }
+            case 'Escape':
+              confirmMode = 'esc';
+              diagText = `"NOT" submit score`;
+              drawConfirmDiag()
+              return;
+            default:
+              drawHSPrompt();
+              drawFillText("CAN'T USE !", 0, 80, 30, '#ddd', 'normal');
+              return;
+          }
+        }
+        drawHSPrompt();
+        break;
+      } else {
+        drawHSPrompt();
+        let react = drawConfirm(e.key);
+        if (react === 'yes') {
+          if (confirmMode === 'name') {
+            saveHighScore();
+          } else if (confirmMode === 'esc') {
+            // ハイスコアを破棄
+          }
+          confirmMode = 'none';
+          initialize("TITLE");
+          drawTitle();
+          return;
+        } else if (react === 'no') {
+          confirmMode = 'none';
+          drawHSPrompt();
+          return;
+        } else {
+          return;
+        }
+      }
     case "TITLE": // タイトル画面時
       switch (e.key) {
         case "ArrowUp":
@@ -1486,105 +1864,111 @@ document.onkeydown = function (e) {
           datas.selectPos++;
           break;
         case "Enter":
-          if (datas.selectPos === 0) {
-            initialize("GAME");
-            spawnMino();
-            drawAll();
-            mainLoop();
-            return;
-          } else if (datas.selectPos === 1) {
-            initialize("CONFIG");
-            drawConfig();
-            return;
+          switch (datas.selectPos) {
+            case 0:
+              initialize("GAME");
+              datas.mode = 'normal';
+              spawnMino();
+              drawAll();
+              mainLoop();
+              return;
+            case 1:
+              initialize("HIGH_SCORES")
+              datas.mode = 'normal';
+              hsSwitch = true;
+              drawHighScore();
+              return;
+            case 2:
+              initialize("CONFIG");
+              drawConfig();
+              return;
           }
           break;
       }
       if (datas.selectPos < 0) {
-        datas.selectPos += 2;
+        datas.selectPos += 3;
       }
-      datas.selectPos %= 2;
+      datas.selectPos %= 3;
       drawTitle();
       break;
     case "CONFIG": // コンフィグ時
-      if (!datas.configPromptMode) {
-        switch (e.key) {
-          case "ArrowUp":
-            datas.selectPos--;
-            break;
-          case "ArrowDown":
-            datas.selectPos++;
-            break;
-          case "Enter":
-            if (datas.selectPos === 7 || datas.selectPos === 8) {
-              situation = "CONFIG_CONFIRM";
-              drawConfigConfirm();
-              return;
-            } else {
-              oldKeys = JSON.parse(JSON.stringify(keys));
-              datas.configPromptMode = !datas.configPromptMode;
-              drawConfig();
-            }
-            break;
-          case "Escape":
-            initialize("TITLE");
-            drawTitle();
-            return;
-        }
-        if (datas.selectPos < 0) {
-          datas.selectPos += 9;
-        }
-        datas.selectPos %= 9;
-        drawConfig();
-        break;
-      } else {
-        changeKey(e.key);
-      }
-      break;
-    case "CONFIG_CONFIRM": // コンフィグ確認画面時
-      switch (e.key) {
-        case "ArrowLeft":
-          confirmPos--;
-          break;
-        case "ArrowRight":
-          confirmPos++;
-          break;
-        case "Enter":
-          if (confirmPos === 1) {
-            situation = "CONFIG";
-            drawConfig();
-            confirmPos = 1;
-            return;
-          }
-          switch (datas.selectPos) {
-            case 7:
+      if (confirmMode === 'none') {
+        if (!configPromptMode) {
+          switch (e.key) {
+            case "ArrowUp":
+              datas.selectPos--;
+              break;
+            case "ArrowDown":
+              datas.selectPos++;
+              break;
+            case "Enter":
+              if (datas.selectPos === 7) {
+                confirmMode = 'back';
+                diagText = `Back to title`;
+                drawConfirmDiag();
+                return;
+              } else if (datas.selectPos === 8) {
+                confirmMode = 'default';
+                diagText = `Set default keys`;
+                drawConfirmDiag();
+                return;
+              } else {
+                oldKeys = JSON.parse(JSON.stringify(keys));
+                configPromptMode = !configPromptMode;
+                drawConfig();
+              }
+              break;
+            case "Escape":
               initialize("TITLE");
               drawTitle();
-              confirmPos = 1;
-              return;
-            case 8:
-              situation = "CONFIG";
-              keys = new InitialKeys();
-			  for (let p in keys) {
-				  document.cookie = p + '=; max-age=0';
-			  }
-              drawConfig();
-              confirmPos = 1;
               return;
           }
+          if (datas.selectPos < 0) {
+            datas.selectPos += 9;
+          }
+          datas.selectPos %= 9;
+          drawConfig();
+          break;
+        } else {
+          changeKey(e.key);
+        }
+      } else {
+        drawConfig();
+        let react = drawConfirm(e.key);
+        if (react === 'yes') {
+          if (confirmMode === 'default') {
+            keys = new InitialKeys();
+            for (let p in keys) {
+              document.cookie = p + '=; max-age=0';
+            }
+            drawConfig();
+          } else if (confirmMode === 'back') {
+            initialize("TITLE");
+            drawTitle();
+          }
+          confirmMode = 'none';
+          return;
+        } else if (react === 'no') {
+          confirmMode = 'none';
+          drawConfig();
+          return;
+        } else {
+          return;
+        }
+      }
+      break;
+    case "HIGH_SCORES":
+      switch (e.key) {
+        case "Tab":
+          hsSwitch = !hsSwitch;
           break;
         case "Escape":
-          situation = "CONFIG";
-          drawConfig();
-          confirmPos = 1;
+          initialize("TITLE");
+          drawTitle();
           return;
       }
-      if (confirmPos < 0) {
-        confirmPos += 2;
-      }
-      confirmPos %= 2;
-	  drawConfig();
-      drawConfigConfirm();
-      break;
+      drawHighScore();
+    break;
   }
 };
 
@@ -1599,8 +1983,8 @@ function mainLoop() {
         let c = 0;
         while (nowFrame > datas.frameCount) {
           datas.frameCount++;
-            dropMino();
-            if (++c >= 4) {
+          dropMino();
+          if (++c >= 4) {
             break;
           }
         }
@@ -1625,12 +2009,17 @@ function mainLoop() {
         datas.startTime += elapsedTime;
         situation = "GAME";
       }
+      checkGameClear();
       drawAll();
       drawClearEffect();
       requestAnimationFrame(mainLoop);
       break;
-    case "GAME_OVER":
-      drawGameOver();
+    case "GAME_OVER_EFFECT":
+      drawGameOverEffect();
+      requestAnimationFrame(mainLoop)
+      break;
+    case "RESULT":
+      drawGameResult();
       cancelAnimationFrame(mainLoop);
       break;
     case "PAUSE":
@@ -1644,7 +2033,7 @@ function mainLoop() {
 // 画面読み込み時の処理
 window.onload = function () {
   datas.startTime = performance.now();
-  setKeysByCookie();
+  setByCookie();
   window.addEventListener("keydown", keydownfunc, true);
 };
 
