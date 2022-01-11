@@ -1,6 +1,6 @@
 "use strict";
 
-const VERSION = "ver.0.1.3"
+const VERSION = "ver.0.1.4"
 
 // キャンバス情報取得
 const CANVAS = document.getElementById("tet_field");
