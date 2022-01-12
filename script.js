@@ -1,10 +1,26 @@
 "use strict";
 
-const VERSION = "ver.0.1.4"
+const VERSION = "ver.0.2.0"
 
 // キャンバス情報取得
 const CANVAS = document.getElementById("tet_field");
 const CONTEXT = CANVAS.getContext("2d");
+
+const MAIN_MANU = [
+  'NORMAL GAME',
+  'CUSTOM GAME',
+  'HiGH SCORES',
+  'KEY CONFiG'
+];
+
+const CUSTOM_MENU = [
+  'START LEVEL',
+  'LEVEL UP',
+  'ENDLESS',
+  'TETROMiNOS',
+  // 'ADVANCED SETTING',
+  'GAME START'
+]
 
 // テトリミノ関連定数
 const MINOS = [
@@ -31,6 +47,15 @@ const BC_LIST = [
   "#999", //wall
 ];
 const BLOCK_SIZE = 20; // ブロックの縦横幅
+const MINO_NAME = [
+  'T',
+  'S',
+  'Z',
+  'L',
+  'J',
+  'O',
+  'I'
+]
 
 // フィールド関連定数
 const FIELD_ROW = 23; // フィールドの行数（20行 + 壁 + 画面外）
@@ -43,7 +68,6 @@ const CANVAS_H = BLOCK_SIZE * (FIELD_ROW - 2) + BLOCK_SIZE / 2; // キャンバ�
 const MARGIN = (BLOCK_SIZE * FIELD_COL) / 2; // ゲーム時のマージンを計算
 
 // 各種初期値
-const DEFAULT_SPEED = 1000; // デフォルトのゲームスピード
 class InitialKeys {
   // デフォルトのキー配置
   constructor() {
@@ -87,6 +111,22 @@ class InitialKeyStatus {
   }
 }
 
+class Custom {
+  constructor() {
+    this.levelUp = true;
+    this.endless = false;
+    this.mino = [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ];
+  }
+}
+
 class InitialDatas {
   constructor() {
     this.selectPos = 0; // メニュー時選択箇所
@@ -97,7 +137,6 @@ class InitialDatas {
     this.mino_y = 0; // 現在ミノのY座標
     this.hold = 0; // ホールド中のミノ番号
     this.useHold = false; // ホールド使用済フラグ
-    this.gameSpeed = DEFAULT_SPEED; // 現在のゲームスピード
     this.stats = new InitialStats(); // 現在の成績
     this.fixedCol = []; // ミノ固定ポジション
     this.alignLine = []; // 揃ったライン
@@ -127,7 +166,8 @@ class InitialDatas {
 
 const DAS_FRAME = 11;
 const ARR_FRAME = 2;
-const MAX_ACTION = 8;
+const MAX_ACTION = 15;
+const MAX_LEVEL = 15;
 
 // グローバル変数定義
 let datas = new InitialDatas();
@@ -160,6 +200,11 @@ let confirmMode = 'none'; // 確認ボックスの用途
 let diagText = ''; // 確認ボックス用ダイアログメッセージ
 let resultSwitch = true; // リザルト画面のスイッチ
 let hsSwitch = true; // ハイスコア画面のスイッチ
+let levelSwitch = false; // 開始レベル選択のスイッチ
+let customSwitch = false; // カスタム選択のスイッチ
+let custom = new Custom; // カスタムゲームの設定
+let cusMinoSwitch = false; // ミノ出現設定スイッチ
+let cusAdSwitch = false; // 詳細設定スイッチ
 
 // キャンバス描画サイズ指定
 CANVAS.setAttribute("width", CANVAS_W);
@@ -208,6 +253,13 @@ function buildMinoMap(num, rotate) {
     }
   }
   return minoMap;
+}
+
+function resetCanvas() {
+  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
+  CONTEXT.beginPath();
+  CONTEXT.fillStyle = "#222";
+  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
 }
 
 // ブロックを描画
@@ -533,10 +585,7 @@ function drawFixEffect() {
 
 // ゲーム画面をまとめて描画
 function drawAll() {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.beginPath();
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  resetCanvas();
   drawFixEffect();
   drawField();
   drawGhost();
@@ -552,17 +601,35 @@ function drawAll() {
 
 // ミノバッグを生成
 function genBag() {
-  let newBag = new Array(7);
-  let serialNum = 1;
-  for (let i = 0; i < newBag.length; i++) {
-    newBag[i] = serialNum;
-    serialNum++;
+    let serialNum = 1;
+    if (!(datas.mode === 'custom' && custom.mino.includes(false))) {
+    let newBag = new Array(7);
+    for (let i = 0; i < newBag.length; i++) {
+      newBag[i] = serialNum;
+      serialNum++;
+    }
+    for (let i = newBag.length; i > 1; i--) {
+      let target = Math.floor(Math.random() * i);
+      [newBag[target], newBag[i - 1]] = [newBag[i - 1], newBag[target]];
+    }
+    return newBag;
+  } else {
+    let newBag = [];
+    let minoList = [];
+    for (let i = 0; i < custom.mino.length; i++) {
+      if (custom.mino[i]) {
+        minoList.push(i + 1);
+      }
+    }
+    while (newBag.length < 7) {
+      for (let i = minoList.length; i > 1; i--) {
+        let target = Math.floor(Math.random() * i);
+        [minoList[target], minoList[i - 1]] = [minoList[i - 1], minoList[target]];
+      }
+      newBag = newBag.concat(minoList);
+    }
+    return newBag;
   }
-  for (let i = newBag.length; i > 1; i--) {
-    let target = Math.floor(Math.random() * i);
-    [newBag[target], newBag[i - 1]] = [newBag[i - 1], newBag[target]];
-  }
-  return newBag;
 }
 
 // ミノの長さを計算
@@ -830,7 +897,7 @@ function dropMino() {
       datas.lowestRow = datas.mino_y;
       datas.onGround = true;
     } else if (datas.onGround) {
-      if (datas.lowestRow <= datas.mino_y){
+      if (datas.lowestRow <= datas.mino_y) {
         datas.actionCount = 0;
       }
       datas.onGround = false;
@@ -986,19 +1053,25 @@ function clearLine() {
 
 // レベルアップ
 function levelUp() {
-  if (datas.stats.lines >= datas.stats.level * 10) {
-    datas.stats.level++;
-    datas.startTime = performance.now();
-    datas.frameCount = 0;
+  if (!(datas.mode === 'custom' && !custom.levelUp)) {
+    if (datas.stats.level <= 15) {
+      if (datas.stats.lines >= datas.stats.level * 10) {
+        datas.stats.level++;
+        datas.startTime = performance.now();
+        datas.frameCount = 0;
+      }
+    }
   }
 }
 
 // ゲームクリアチェック
 function checkGameClear() {
-  if (datas.stats.lines >= 150) {
-    situation = "GAME_OVER_EFFECT";
-    datas.result = 'CLEAR';
-    datas.gameOverTime = performance.now();
+  if (!(datas.mode != 'custom' && custom.endless)) {
+    if (datas.stats.lines >= 150) {
+      situation = "GAME_OVER_EFFECT";
+      datas.result = 'CLEAR';
+      datas.gameOverTime = performance.now();
+    }
   }
 }
 
@@ -1060,17 +1133,131 @@ function initialize(sit) {
 
 // タイトル画面描画
 function drawTitle() {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.beginPath();
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  resetCanvas();
   drawStrokeText("TETLiS", 0, -60, 70, "#ddd", "bold");
-  drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
-  drawFillText("HiGH SCORES", 0, 30, 20, "#ddd", "bold");
-  drawFillText("KEY CONFiG", 0, 60, 20, "#ddd", "bold");
-  drawFillText("Press ENTER to start!", 0, 130, 20, "#ddd", "bold");
+  for (let i = 0; i < MAIN_MANU.length; i++) {
+    drawFillText(MAIN_MANU[i], 0, i * 30, 20, "#ddd", "bold");
+  }
+  drawFillText('SELECT: Enter', 0, 210, 14, '#ddd', 'bold');
   drawFillText("->", -140, datas.selectPos * 30, 20, "#ddd", "bold");
   drawFillText(VERSION, 170, 200, 12, '#ddd', 'normal');
+}
+
+function drawLevelSelect() {
+  resetCanvas();
+  drawStrokeText("TETLiS", 0, -60, 70, "#ddd", "bold");
+  drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
+  drawFillText("START LEVEL", 0, 50, 20, "#ddd", "bold");
+  drawFillText(datas.stats.level, 0, 80, 20, "#ddd", "bold");
+  if (datas.stats.level > 1) {
+    drawFillText("◀    ", 0, 76, 20, "#ddd", "bold");
+  }
+  if (datas.stats.level < 15) {
+    drawFillText("    ▶", 0, 76, 20, "#ddd", "bold");
+  }
+  drawFillText("Press ENTER to start!", 0, 130, 20, "#ddd", "bold");
+  drawFillText('BACK TO TiTLE: Esc', 0, 210, 14, '#ddd', 'bold');
+}
+
+function drawCustom() {
+
+  function calcX(x, text) {
+    return x - CONTEXT.measureText(text).width / 2;
+  }
+
+  function boolToStr(data) {
+    if (data) {
+      return 'ON';
+    } else {
+      return 'OFF';
+    }
+  }
+
+  resetCanvas();
+  drawFillText("CUSTOM GAME", 0, -135, 40, "#ddd", "normal");
+  CONTEXT.font = `normal 18px "Press Start 2P"`;
+  CONTEXT.fillStyle = "#ddd";
+
+  if (cusMinoSwitch) {
+    MINO_NAME.forEach(function (item, index) {
+      CONTEXT.fillText(item + ':', 170, 130 + index * 30);
+    });
+    custom.mino.forEach(function(item, index){
+      CONTEXT.fillText(boolToStr(item), calcX(285, boolToStr(item)), 130 + index * 30);
+    });
+    CONTEXT.fillText('BACK', 170, 340);
+    let y = 126 + datas.selectPos * 30;
+    if (datas.selectPos < MINO_NAME.length) {
+      if (custom.mino[datas.selectPos]) {
+        CONTEXT.fillText("◀    ", 240, y);
+      } else {
+        CONTEXT.fillText("    ▶", 240, y);
+      }
+    }
+    let arrow_x = 120;
+    let arrow_y = 130 + datas.selectPos * 30;
+    CONTEXT.font = `bold 20px "Press Start 2P"`;
+    CONTEXT.fillText("->", arrow_x, arrow_y);
+  } else if (cusAdSwitch) {} else {
+    let x = 60;
+    let y;
+    CUSTOM_MENU.forEach(function (item, index) {
+      let t = item;
+      y = 115 + index * 30;
+      if (index < 3) {
+        t = t.padEnd(14) + ':';
+      }
+      if (index >= CUSTOM_MENU.indexOf('TETROMiNOS')) {
+        y += 30;
+      }
+      if (index >= CUSTOM_MENU.indexOf('GAME START')) {
+        y += 30;
+      }
+      CONTEXT.fillText(t, x, y);
+    });
+    CONTEXT.fillText(datas.stats.level, calcX(385, datas.stats.level), 115);
+    CONTEXT.fillText(boolToStr(custom.levelUp), calcX(385, boolToStr(custom.levelUp)), 145);
+    CONTEXT.fillText(boolToStr(custom.endless), calcX(385, boolToStr(custom.endless)), 175);
+    x = 340;
+    y = 111 + datas.selectPos * 30;
+    switch (datas.selectPos) {
+      case 0:
+        if (datas.stats.level > 1) {
+          CONTEXT.fillText("◀    ", x, y);
+        }
+        if (datas.stats.level < 15) {
+          CONTEXT.fillText("    ▶", x, y);
+        }
+        break;
+      case 1:
+        if (custom.levelUp) {
+          CONTEXT.fillText("◀    ", x, y);
+        } else {
+          CONTEXT.fillText("    ▶", x, y);
+        }
+        break;
+      case 2:
+        if (custom.endless) {
+          CONTEXT.fillText("◀    ", x, y);
+        } else {
+          CONTEXT.fillText("    ▶", x, y);
+        }
+        break;
+    }
+
+    let arrow_x = 10;
+    let arrow_y = 115 + datas.selectPos * 30;
+    if (datas.selectPos >= CUSTOM_MENU.indexOf('TETROMiNOS')) {
+      arrow_y += 30;
+    }
+    if (datas.selectPos >= CUSTOM_MENU.indexOf('GAME START')) {
+      arrow_y += 30;
+    }
+    CONTEXT.font = `bold 20px "Press Start 2P"`;
+    CONTEXT.fillText("->", arrow_x, arrow_y);
+  }
+  drawFillText("CONTROL: Arrow Key & Space", 0, 190, 14, "#ddd", "normal");
+  drawFillText("SELECT: Enter / CANCEL: Esc", 0, 210, 14, "#ddd", "normal");
 }
 
 // ポーズメニュー描画
@@ -1108,9 +1295,7 @@ function drawGameOverEffect() {
 
 // リザルト画面描画
 function drawGameResult() {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  resetCanvas();
   drawFillText("GAME", 0, -140, 55, "#222", "bold");
   drawStrokeText("GAME", 0, -140, 55, "#ddd", "bold");
   drawFillText(datas.result, 0, -70, 55, "#222", "bold");
@@ -1121,13 +1306,13 @@ function drawGameResult() {
   CONTEXT.fillText(`LEVEL : ${datas.stats.level}`, 110, 230)
   CONTEXT.fillText(`LINES : ${datas.stats.lines}`, 110, 260)
   CONTEXT.fillText(`SCORE : ${datas.stats.score}`, 110, 290)
-  if (checkHighScore()) {
-    drawFillText('HiGH SCORE!!', 0, 130, '30', '#ddd', 'normal');
-    drawFillText('SHOW LAST SCREEN: Tab', 0, 170, '16', '#ddd', 'normal');
-    drawFillText('CONTiNUE: Space', 0, 200, '16', '#ddd', 'normal');
-  } else {
-    drawFillText('Press SPACE', 0, 160, '16', '#ddd', 'normal');
+  if (datas.mode != 'custom') {
+    if (checkHighScore()) {
+      drawFillText('HiGH SCORE!!', 0, 130, '30', '#ddd', 'normal');
+    }
   }
+  drawFillText('SHOW LAST SCREEN: Tab', 0, 190, 14, '#ddd', 'normal');
+  drawFillText('CONTiNUE: Space', 0, 210, 14, '#ddd', 'normal');
 }
 
 function checkHighScore() {
@@ -1152,14 +1337,12 @@ function checkHighScore() {
 }
 
 function drawHSPrompt() {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  resetCanvas();
   drawFillText('HiGH SCORE!!', 0, -150, 35, '#ddd', 'bold');
   drawFillText('Enter your name!', 0, -100, 20, '#ddd', 'bold');
   drawFillText(userName, 0, 0, 40, '#ddd', 'bold');
-  drawFillText('ERASE: Back Space', 0, 170, 16, '#ddd', 'bold')
-  drawFillText('SUBMiT: Enter / CANCEL: Esc', 0, 200, 16, '#ddd', 'bold');
+  drawFillText('ERASE: Back Space', 0, 190, 14, '#ddd', 'bold')
+  drawFillText('SUBMiT: Enter / CANCEL: Esc', 0, 210, 14, '#ddd', 'bold');
 }
 
 function saveHighScore() {
@@ -1261,11 +1444,8 @@ function setByCookie() {
 }
 
 // ハイスコア画面描画
-function drawHighScore () {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.beginPath();
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+function drawHighScore() {
+  resetCanvas();
   drawFillText("HiGH SCORES", 0, -150, 40, "#ddd", "bold");
   drawFillText(datas.mode.toUpperCase(), 0, -100, 30, "#ddd", "normal");
   let count = 0;
@@ -1313,16 +1493,13 @@ function drawHighScore () {
     }
   }
   // drawFillText('CHANGE GAME MODE: Space', 0, 140, 16, '#ddd', 'bold');
-  drawFillText('CHANGE DiSPLAY: Tab', 0, 170, 16, '#ddd', 'bold');
-  drawFillText('BACK TO TiTLE: Esc', 0, 200, 16, '#ddd', 'bold');
+  drawFillText('CHANGE DiSPLAY: Tab', 0, 190, 14, '#ddd', 'bold');
+  drawFillText('BACK TO TiTLE: Esc', 0, 210, 14, '#ddd', 'bold');
 }
 
 // キーコンフィグ描画
 function drawConfig() {
-  CONTEXT.clearRect(0, 0, CANVAS.width, CANVAS.height);
-  CONTEXT.beginPath();
-  CONTEXT.fillStyle = "#222";
-  CONTEXT.fillRect(0, 0, CANVAS.width, CANVAS.height);
+  resetCanvas()
   drawFillText("KEY CONFiG", 0, -150, 40, "#ddd", "bold");
   const Y = CANVAS_H / 2 - 100;
   let ny;
@@ -1622,7 +1799,7 @@ function keyAction(nowTime) {
           datas.lowestRow = datas.mino_y;
           datas.onGround = true;
         } else if (datas.onGround) {
-          if (datas.lowestRow <= datas.mino_y){
+          if (datas.lowestRow <= datas.mino_y) {
             datas.actionCount = 0;
           }
           datas.onGround = false;
@@ -1638,6 +1815,15 @@ function keyAction(nowTime) {
         if (checkMove(-1, 0)) {
           datas.mino_x--;
           datas.useSpin = false;
+          if (!checkMove(0, 1)) {
+            if (!datas.onGround) {
+              datas.delayTime = performance.now();
+            }
+            datas.onGround = true;
+          } else if (datas.onGround) {
+            datas.actionCount++;
+            datas.onGround = false;
+          }
         };
       }
     }
@@ -1647,6 +1833,15 @@ function keyAction(nowTime) {
         if (checkMove(1, 0)) {
           datas.mino_x++;
           datas.useSpin = false;
+          if (!checkMove(0, 1)) {
+            if (!datas.onGround) {
+              datas.delayTime = performance.now();
+            }
+            datas.onGround = true;
+          } else if (datas.onGround) {
+            datas.actionCount++;
+            datas.onGround = false;
+          }
         };
       }
     }
@@ -1856,40 +2051,180 @@ document.onkeydown = function (e) {
         }
       }
     case "TITLE": // タイトル画面時
-      switch (e.key) {
-        case "ArrowUp":
-          datas.selectPos--;
-          break;
-        case "ArrowDown":
-          datas.selectPos++;
-          break;
-        case "Enter":
-          switch (datas.selectPos) {
-            case 0:
-              initialize("GAME");
-              datas.mode = 'normal';
-              spawnMino();
-              drawAll();
-              mainLoop();
-              return;
-            case 1:
-              initialize("HIGH_SCORES")
-              datas.mode = 'normal';
-              hsSwitch = true;
-              drawHighScore();
-              return;
-            case 2:
-              initialize("CONFIG");
-              drawConfig();
+      if (levelSwitch) {
+        switch (e.key) {
+          case 'ArrowRight':
+            if (datas.stats.level < 15) {
+              datas.stats.level++;
+            }
+            drawLevelSelect();
+            break;
+          case 'ArrowLeft':
+            if (datas.stats.level > 1) {
+              datas.stats.level--;
+            }
+            drawLevelSelect();
+            break;
+          case "Enter":
+            levelSwitch = !levelSwitch;
+            situation = "GAME";
+            datas.startTime = performance.now();
+            spawnMino();
+            drawAll();
+            mainLoop();
+            return;
+          case 'Escape':
+            levelSwitch = !levelSwitch;
+            drawTitle();
+            break;
+        }
+      } else if (customSwitch) {
+        switch (e.key) {
+          case 'ArrowUp':
+            datas.selectPos--;
+            break;
+          case "ArrowDown":
+            datas.selectPos++;
+            break;
+        }
+        if (cusMinoSwitch) {
+          switch (e.key) {
+            case 'ArrowRight':
+              if (datas.selectPos < MINO_NAME.length) {
+                custom.mino[datas.selectPos] = true;
+              }
+              break;
+            case 'ArrowLeft':
+              if (datas.selectPos < MINO_NAME.length) {
+                custom.mino[datas.selectPos] = false;
+              }
+              break;
+            case ' ':
+            case 'Enter':
+              if (datas.selectPos < MINO_NAME.length) {
+                custom.mino[datas.selectPos] = !custom.mino[datas.selectPos];
+              } else if (datas.selectPos = MINO_NAME.length) {
+                if (custom.mino.includes(true)) {
+                  cusMinoSwitch = !cusMinoSwitch;
+                  datas.selectPos = 3;
+                } else {
+                  drawCustom();
+                  drawFillText('You need at least one!', 0, 160, 20, '#ddd', 'bold')
+                  return;
+                }
+              }
+              break;
+            case 'Escape':
+              cusMinoSwitch = !cusMinoSwitch;
+              datas.selectPos = CUSTOM_MENU.indexOf('TETROMiNOS');
+              drawCustom();
               return;
           }
-          break;
+          if (datas.selectPos < 0) {
+            datas.selectPos += MINO_NAME.length + 1;
+          }
+          datas.selectPos %= MINO_NAME.length + 1;
+          drawCustom();
+        } else if (cusAdSwitch) {} else {
+          switch (e.key) {
+            case 'ArrowRight':
+              if (datas.stats.level < MAX_LEVEL && datas.selectPos === CUSTOM_MENU.indexOf('START LEVEL')) {
+                datas.stats.level++;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('LEVEL UP')) {
+                custom.levelUp = true;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('ENDLESS')) {
+                custom.endless = true;
+              }
+              break;
+            case 'ArrowLeft':
+              if (datas.stats.level > 1 && datas.selectPos === CUSTOM_MENU.indexOf('START LEVEL')) {
+                datas.stats.level--;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('LEVEL UP')) {
+                custom.levelUp = false;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('ENDLESS')) {
+                custom.endless = false;
+              }
+              break;
+            case ' ':
+            case "Enter":
+              switch (datas.selectPos) {
+                case CUSTOM_MENU.indexOf('LEVEL UP'):
+                  custom.levelUp = !custom.levelUp;
+                  break;
+                case CUSTOM_MENU.indexOf('ENDLESS'):
+                  custom.endless = !custom.endless;
+                  break;
+                case CUSTOM_MENU.indexOf('TETROMiNOS'):
+                  cusMinoSwitch = !cusMinoSwitch;
+                  datas.selectPos = 0;
+                  break;
+                case CUSTOM_MENU.indexOf('ADVANCED SETTING'):
+                  cusAdSwitch = !cusAdSwitch;
+                  datas.selectPos = 0;
+                  break;
+                case CUSTOM_MENU.indexOf('GAME START'):
+                  customSwitch = !customSwitch;
+                  situation = "GAME";
+                  datas.startTime = performance.now();
+                  spawnMino();
+                  drawAll();
+                  mainLoop();
+                  return;
+              }
+              break;
+            case 'Escape':
+              customSwitch = !customSwitch;
+              datas.selectPos = MAIN_MANU.indexOf('CUSTOM GAME');
+              drawTitle();
+              return;
+          }
+          if (datas.selectPos < 0) {
+            datas.selectPos += CUSTOM_MENU.length;
+          }
+          datas.selectPos %= CUSTOM_MENU.length;
+          drawCustom();
+        }
+      } else {
+        switch (e.key) {
+          case "ArrowUp":
+            datas.selectPos--;
+            break;
+          case "ArrowDown":
+            datas.selectPos++;
+            break;
+          case "Enter":
+            switch (datas.selectPos) {
+              case MAIN_MANU.indexOf('NORMAL GAME'):
+                levelSwitch = !levelSwitch;
+                initialize("TITLE");
+                datas.mode = 'normal';
+                drawLevelSelect();
+                return;
+              case MAIN_MANU.indexOf('CUSTOM GAME'):
+                customSwitch = !customSwitch;
+                initialize("TITLE");
+                datas.mode = 'custom';
+                drawCustom();
+                return;
+              case MAIN_MANU.indexOf('HiGH SCORES'):
+                initialize("HIGH_SCORES")
+                datas.mode = 'normal';
+                hsSwitch = true;
+                drawHighScore();
+                return;
+              case MAIN_MANU.indexOf('KEY CONFiG'):
+                initialize("CONFIG");
+                drawConfig();
+                return;
+            }
+            break;
+        }
+        if (datas.selectPos < 0) {
+          datas.selectPos += MAIN_MANU.length;
+        }
+        datas.selectPos %= MAIN_MANU.length;
+        drawTitle();
       }
-      if (datas.selectPos < 0) {
-        datas.selectPos += 3;
-      }
-      datas.selectPos %= 3;
-      drawTitle();
       break;
     case "CONFIG": // コンフィグ時
       if (confirmMode === 'none') {
@@ -1920,6 +2255,7 @@ document.onkeydown = function (e) {
               break;
             case "Escape":
               initialize("TITLE");
+              datas.selectPos = 3;
               drawTitle();
               return;
           }
@@ -1964,11 +2300,12 @@ document.onkeydown = function (e) {
           break;
         case "Escape":
           initialize("TITLE");
+          datas.selectPos = 2;
           drawTitle();
           return;
       }
       drawHighScore();
-    break;
+      break;
   }
 };
 
