@@ -1,12 +1,13 @@
 "use strict";
 
-const VERSION = "ver.0.2.0"
+const VERSION = "ver.1.0.0"
 
 // キャンバス情報取得
 const CANVAS = document.getElementById("tet_field");
 const CONTEXT = CANVAS.getContext("2d");
 
 const MAIN_MANU = [
+  'ONLY WiN @TETRiS',
   'NORMAL GAME',
   'CUSTOM GAME',
   'HiGH SCORES',
@@ -17,9 +18,21 @@ const CUSTOM_MENU = [
   'START LEVEL',
   'LEVEL UP',
   'ENDLESS',
+  '@TETRiS',
   'TETROMiNOS',
   // 'ADVANCED SETTING',
   'GAME START'
+]
+
+const HS_PAGES = [
+  'SCORE',
+  'STATS',
+  'DATE'
+]
+
+const HS_MODES = [
+  'NORMAL GAME',
+  'ONLY WiN @TETRiS'
 ]
 
 // テトリミノ関連定数
@@ -45,6 +58,7 @@ const BC_LIST = [
   "#e6e645", //O
   "#4de7ff", //I
   "#999", //wall
+  "#555" //ojama
 ];
 const BLOCK_SIZE = 20; // ブロックの縦横幅
 const MINO_NAME = [
@@ -59,8 +73,9 @@ const MINO_NAME = [
 
 // フィールド関連定数
 const FIELD_ROW = 23; // フィールドの行数（20行 + 壁 + 画面外）
-const FIELD_COL = 12; // フィールドの列数（10行 + 壁）
+const FIELD_COL = 12; // フィールドの列数（10列 + 壁）
 const FIELD_TEMPLATE = [8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8]; // フィールドのテンプレート
+const FILLED_FIELD_TEMPLATE = [8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 8]; // フィールドのテンプレート
 
 // キャンバス関連定数
 const CANVAS_W = BLOCK_SIZE * FIELD_COL * 2; // キャンバスの横幅を計算
@@ -87,6 +102,7 @@ class highScore {
     this.level = 0;
     this.lines = 0;
     this.score = 0;
+    this.date = 0;
   }
 }
 class InitialStats {
@@ -115,6 +131,7 @@ class Custom {
   constructor() {
     this.levelUp = true;
     this.endless = false;
+    this.atTetris = false;
     this.mino = [
       true,
       true,
@@ -192,6 +209,13 @@ let highScores = { // ハイスコアデータ
     hs3: new highScore(),
     hs4: new highScore(),
     hs5: new highScore()
+  },
+  atTetris: {
+    hs1: new highScore(),
+    hs2: new highScore(),
+    hs3: new highScore(),
+    hs4: new highScore(),
+    hs5: new highScore()
   }
 }
 let userName = '___'; // ハイスコア用ユーザ－名
@@ -199,7 +223,8 @@ let configPromptMode = false; // キーコンフィグ入力待機
 let confirmMode = 'none'; // 確認ボックスの用途
 let diagText = ''; // 確認ボックス用ダイアログメッセージ
 let resultSwitch = true; // リザルト画面のスイッチ
-let hsSwitch = true; // ハイスコア画面のスイッチ
+let hsSwitch = 0; // ハイスコア画面のスイッチ(表示項目)
+let hsModeSwitch = 0; // ハイスコア画面のスイッチ(モード)
 let levelSwitch = false; // 開始レベル選択のスイッチ
 let customSwitch = false; // カスタム選択のスイッチ
 let custom = new Custom; // カスタムゲームの設定
@@ -601,8 +626,8 @@ function drawAll() {
 
 // ミノバッグを生成
 function genBag() {
-    let serialNum = 1;
-    if (!(datas.mode === 'custom' && custom.mino.includes(false))) {
+  let serialNum = 1;
+  if (!(datas.mode === 'custom' && custom.mino.includes(false))) {
     let newBag = new Array(7);
     for (let i = 0; i < newBag.length; i++) {
       newBag[i] = serialNum;
@@ -871,11 +896,25 @@ function fixMino() {
   datas.fixedCol.push(li);
   datas.fixTime.push(performance.now());
   checkLine();
-  if (datas.alignLine.length > 0) {
-    datas.ren++;
-    clearLine();
+  if (datas.mode != 'atTetris' && !(datas.mode === 'custom' && custom.atTetris)) {
+    if (datas.alignLine.length > 0) {
+      datas.ren++;
+      clearLine();
+    } else {
+      datas.ren = 0;
+    }
   } else {
-    datas.ren = 0;
+    if (datas.alignLine.length > 0) {
+      if (datas.alignLine.length === 4) {
+        datas.ren++;
+        clearLine();
+      } else {
+        breakLine();
+        datas.ren = 0;
+      }
+    } else {
+      datas.ren = 0;
+    }
   }
   checkPerfect();
   calcTSpinPoint();
@@ -890,18 +929,18 @@ function dropMino() {
   if (checkMove(0, 1)) {
     datas.useSpin = false;
     datas.mino_y++;
-    if (!checkMove(0, 1)) {
-      if (!datas.onGround) {
-        datas.delayTime = performance.now();
-      }
-      datas.lowestRow = datas.mino_y;
-      datas.onGround = true;
-    } else if (datas.onGround) {
-      if (datas.lowestRow <= datas.mino_y) {
-        datas.actionCount = 0;
-      }
-      datas.onGround = false;
+  }
+  if (!checkMove(0, 1)) {
+    if (!datas.onGround) {
+      datas.delayTime = performance.now();
     }
+    datas.lowestRow = datas.mino_y;
+    datas.onGround = true;
+  } else if (datas.onGround) {
+    if (datas.lowestRow <= datas.mino_y) {
+      datas.actionCount = 0;
+    }
+    datas.onGround = false;
   }
 }
 
@@ -957,11 +996,17 @@ function checkLine() {
 
 // 加点メッセージを生成
 function calcTSpinPoint() {
+  let len = datas.alignLine.length;
+  if (datas.mode === 'atTetris' || (datas.mode === 'custom' && custom.atTetris)) {
+    if (len != 4) {
+      len = 0;
+    }
+  }
   if (datas.useTSpin) {
     datas.pointMes += 'T-Spin\n';
-    if (datas.alignLine.length > 0) {
+    if (len > 0) {
       if (!datas.useTSpinMini) {
-        datas.additionPoint += (datas.alignLine.length * 200 + 500) * (datas.stats.level);
+        datas.additionPoint += (len * 200 + 500) * (datas.stats.level);
       }
     }
   }
@@ -969,13 +1014,13 @@ function calcTSpinPoint() {
     datas.pointMes += 'Mini\n';
     datas.additionPoint += 100 * (datas.stats.level);
   }
-  if (datas.useTSpin && datas.alignLine.length === 0) {
+  if (datas.useTSpin && len === 0) {
     datas.pointMes += 'Zero\n'
     if (!datas.useTSpinMini) {
       datas.additionPoint += 400 * (datas.stats.level);
     }
   }
-  if (datas.useSpin && datas.alignLine.length > 0) {
+  if (datas.useSpin && len > 0) {
     datas.btb = true;
   }
   datas.useTSpin = false;
@@ -984,8 +1029,14 @@ function calcTSpinPoint() {
 
 // ライン消去点を計算
 function calcPoint() {
+  let len = datas.alignLine.length;
+  if (datas.mode === 'atTetris' || (datas.mode === 'custom' && custom.atTetris)) {
+    if (len != 4) {
+      len = 0;
+    }
+  }
   let pBonus = 0;
-  switch (datas.alignLine.length) {
+  switch (len) {
     case 1:
       datas.pointMes += 'SINGLE\n';
       datas.additionPoint += 100 * (datas.stats.level);
@@ -1048,6 +1099,19 @@ function clearLine() {
   clearTime = performance.now();
   for (let line of datas.alignLine) {
     field[line] = (FIELD_TEMPLATE.slice());
+  }
+}
+
+function breakLine() {
+  situation = "CLEAR_EFFECT";
+  clearTime = performance.now();
+  for (let line of datas.alignLine) {
+    let num = Math.floor(Math.random() * 10) + 1;
+    let newLine = FILLED_FIELD_TEMPLATE.slice();
+    newLine[num] = 0;
+    // field[line] = newLine;
+    field.splice(line, 1);
+    field.splice(FIELD_ROW - 2, 0, newLine);
   }
 }
 
@@ -1139,14 +1203,28 @@ function drawTitle() {
     drawFillText(MAIN_MANU[i], 0, i * 30, 20, "#ddd", "bold");
   }
   drawFillText('SELECT: Enter', 0, 210, 14, '#ddd', 'bold');
-  drawFillText("->", -140, datas.selectPos * 30, 20, "#ddd", "bold");
-  drawFillText(VERSION, 170, 200, 12, '#ddd', 'normal');
+  let arrow_x = -140;
+  if (datas.selectPos === MAIN_MANU.indexOf('ONLY WiN @TETRiS')) {
+    arrow_x += -50;
+  }
+  let arrow_y = datas.selectPos * 30;
+  drawFillText("->", arrow_x, arrow_y, 20, "#ddd", "bold");
+  drawFillText(VERSION, -180, -190, 12, '#ddd', 'normal');
 }
 
 function drawLevelSelect() {
+  let t;
+  switch (datas.mode) {
+    case 'normal':
+      t = 'NORMAL GAME';
+      break;
+    case 'atTetris':
+      t = 'ONLY WiN @TETRiS';
+      break;
+  }
   resetCanvas();
   drawStrokeText("TETLiS", 0, -60, 70, "#ddd", "bold");
-  drawFillText("NORMAL GAME", 0, 0, 20, "#ddd", "bold");
+  drawFillText(t, 0, 0, 20, "#ddd", "bold");
   drawFillText("START LEVEL", 0, 50, 20, "#ddd", "bold");
   drawFillText(datas.stats.level, 0, 80, 20, "#ddd", "bold");
   if (datas.stats.level > 1) {
@@ -1182,7 +1260,7 @@ function drawCustom() {
     MINO_NAME.forEach(function (item, index) {
       CONTEXT.fillText(item + ':', 170, 130 + index * 30);
     });
-    custom.mino.forEach(function(item, index){
+    custom.mino.forEach(function (item, index) {
       CONTEXT.fillText(boolToStr(item), calcX(285, boolToStr(item)), 130 + index * 30);
     });
     CONTEXT.fillText('BACK', 170, 340);
@@ -1198,13 +1276,13 @@ function drawCustom() {
     let arrow_y = 130 + datas.selectPos * 30;
     CONTEXT.font = `bold 20px "Press Start 2P"`;
     CONTEXT.fillText("->", arrow_x, arrow_y);
-  } else if (cusAdSwitch) {} else {
+  } else if (cusAdSwitch) { } else {
     let x = 60;
     let y;
     CUSTOM_MENU.forEach(function (item, index) {
       let t = item;
       y = 115 + index * 30;
-      if (index < 3) {
+      if (index < 4) {
         t = t.padEnd(14) + ':';
       }
       if (index >= CUSTOM_MENU.indexOf('TETROMiNOS')) {
@@ -1218,10 +1296,11 @@ function drawCustom() {
     CONTEXT.fillText(datas.stats.level, calcX(385, datas.stats.level), 115);
     CONTEXT.fillText(boolToStr(custom.levelUp), calcX(385, boolToStr(custom.levelUp)), 145);
     CONTEXT.fillText(boolToStr(custom.endless), calcX(385, boolToStr(custom.endless)), 175);
+    CONTEXT.fillText(boolToStr(custom.atTetris), calcX(385, boolToStr(custom.atTetris)), 205);
     x = 340;
     y = 111 + datas.selectPos * 30;
     switch (datas.selectPos) {
-      case 0:
+      case CUSTOM_MENU.indexOf('START LEVEL'):
         if (datas.stats.level > 1) {
           CONTEXT.fillText("◀    ", x, y);
         }
@@ -1229,15 +1308,22 @@ function drawCustom() {
           CONTEXT.fillText("    ▶", x, y);
         }
         break;
-      case 1:
+      case CUSTOM_MENU.indexOf('LEVEL UP'):
         if (custom.levelUp) {
           CONTEXT.fillText("◀    ", x, y);
         } else {
           CONTEXT.fillText("    ▶", x, y);
         }
         break;
-      case 2:
+      case CUSTOM_MENU.indexOf('ENDLESS'):
         if (custom.endless) {
+          CONTEXT.fillText("◀    ", x, y);
+        } else {
+          CONTEXT.fillText("    ▶", x, y);
+        }
+        break;
+      case CUSTOM_MENU.indexOf('@TETRiS'):
+        if (custom.atTetris) {
           CONTEXT.fillText("◀    ", x, y);
         } else {
           CONTEXT.fillText("    ▶", x, y);
@@ -1348,6 +1434,7 @@ function drawHSPrompt() {
 function saveHighScore() {
   let currentHS = highScores[datas.mode];
   let oldHS = JSON.parse(JSON.stringify(highScores[datas.mode]));
+  let today = new Date().getTime();
   switch (datas.hsFlag) {
     case 'hs1':
       currentHS.hs5 = oldHS.hs4;
@@ -1359,6 +1446,7 @@ function saveHighScore() {
         level: datas.stats.level,
         lines: datas.stats.lines,
         score: datas.stats.score,
+        date: today
       };
       break;
     case 'hs2':
@@ -1370,6 +1458,7 @@ function saveHighScore() {
         level: datas.stats.level,
         lines: datas.stats.lines,
         score: datas.stats.score,
+        date: today
       };
       break;
     case 'hs3':
@@ -1380,6 +1469,7 @@ function saveHighScore() {
         level: datas.stats.level,
         lines: datas.stats.lines,
         score: datas.stats.score,
+        date: today
       };
       break;
     case 'hs4':
@@ -1389,6 +1479,7 @@ function saveHighScore() {
         level: datas.stats.level,
         lines: datas.stats.lines,
         score: datas.stats.score,
+        date: today
       };
       break;
     case 'hs5':
@@ -1397,6 +1488,7 @@ function saveHighScore() {
         level: datas.stats.level,
         lines: datas.stats.lines,
         score: datas.stats.score,
+        date: today
       };
       break;
   }
@@ -1434,10 +1526,9 @@ function setByCookie() {
   for (let mode in highScores) {
     for (let rank in highScores[mode]) {
       if (allCookies[`${mode}-${rank}-name`] != undefined) {
-        highScores[mode][rank]['name'] = allCookies[`${mode}-${rank}-name`];
-        highScores[mode][rank]['level'] = allCookies[`${mode}-${rank}-level`];
-        highScores[mode][rank]['lines'] = allCookies[`${mode}-${rank}-lines`];
-        highScores[mode][rank]['score'] = allCookies[`${mode}-${rank}-score`];
+        for (let p in highScores[mode][rank]) {
+          highScores[mode][rank][p] = allCookies[`${mode}-${rank}-${p}`];
+        }
       }
     }
   }
@@ -1447,7 +1538,7 @@ function setByCookie() {
 function drawHighScore() {
   resetCanvas();
   drawFillText("HiGH SCORES", 0, -150, 40, "#ddd", "bold");
-  drawFillText(datas.mode.toUpperCase(), 0, -100, 30, "#ddd", "normal");
+  drawFillText(HS_MODES[hsModeSwitch], 0, -100, 25, "#ddd", "normal");
   let count = 0;
   CONTEXT.font = 'normal 16px "Press Start 2P"'
   CONTEXT.fillText('NAME', 110, 155);
@@ -1456,43 +1547,87 @@ function drawHighScore() {
   CONTEXT.fillText('3rd', 40, 245);
   CONTEXT.fillText('4th', 40, 275);
   CONTEXT.fillText('5th', 40, 305);
-  if (hsSwitch) {
-    CONTEXT.fillText('SCORE', 290, 155);
-    for (let rank in highScores[datas.mode]) {
-      let t = highScores[datas.mode][rank].score;
-      let y = 185 + count * 30;
-      let x = 330 - CONTEXT.measureText(t).width / 2;
-      CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
-      CONTEXT.fillText(t, x, y);
-      count++;
-    }
-  } else {
-    CONTEXT.fillText('SCORE', 190, 155);
-    CONTEXT.fillText('LINES', 290, 155);
-    CONTEXT.fillText('LEVEL', 390, 155);
-    for (let rank in highScores[datas.mode]) {
-      let t = highScores[datas.mode][rank].score;
-      if (t > 1000000000) {
-        t = '999M+';
-      } else if (t > 1000000) {
-        t = Math.floor(t / 1000000);
-        t += 'M';
-      } else if (t > 1000) {
-        t = Math.floor(t / 1000);
-        t += 'K';
+  switch (hsSwitch) {
+    case HS_PAGES.indexOf('SCORE'):
+      CONTEXT.fillText('SCORE', 290, 155);
+      for (let rank in highScores[datas.mode]) {
+        let t = highScores[datas.mode][rank].score;
+        let y = 185 + count * 30;
+        let x = 330 - CONTEXT.measureText(t).width / 2;
+        CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
+        CONTEXT.fillText(t, x, y);
+        count++;
       }
-      let y = 185 + count * 30;
-      let x = CONTEXT.measureText(t).width / 2;
-      CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
-      CONTEXT.fillText(t, 230 - x, y);
-      x = CONTEXT.measureText(highScores[datas.mode][rank].lines).width / 2;
-      CONTEXT.fillText(highScores[datas.mode][rank].lines, 330 - x, y);
-      x = CONTEXT.measureText(highScores[datas.mode][rank].level).width / 2;
-      CONTEXT.fillText(highScores[datas.mode][rank].level, 430 - x, y);
-      count++;
-    }
+      break;
+    case HS_PAGES.indexOf('STATS'):
+      CONTEXT.fillText('SCORE', 190, 155);
+      CONTEXT.fillText('LINES', 290, 155);
+      CONTEXT.fillText('LEVEL', 390, 155);
+      for (let rank in highScores[datas.mode]) {
+        let t = highScores[datas.mode][rank].score;
+        if (t > 1000000000) {
+          t = '999M+';
+        } else if (t > 1000000) {
+          t = Math.floor(t / 1000000);
+          t += 'M';
+        } else if (t > 1000) {
+          t = Math.floor(t / 1000);
+          t += 'K';
+        }
+        let y = 185 + count * 30;
+        let x = CONTEXT.measureText(t).width / 2;
+        CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
+        CONTEXT.fillText(t, 230 - x, y);
+        x = CONTEXT.measureText(highScores[datas.mode][rank].lines).width / 2;
+        CONTEXT.fillText(highScores[datas.mode][rank].lines, 330 - x, y);
+        x = CONTEXT.measureText(highScores[datas.mode][rank].level).width / 2;
+        CONTEXT.fillText(highScores[datas.mode][rank].level, 430 - x, y);
+        count++;
+      }
+      break;
+    case HS_PAGES.indexOf('DATE'):
+      CONTEXT.fillText('SCORE', 190, 155);
+      CONTEXT.fillText('DATE', 335, 155);
+      for (let rank in highScores[datas.mode]) {
+        let t = highScores[datas.mode][rank].score;
+        if (t > 1000000000) {
+          t = '999M+';
+        } else if (t > 1000000) {
+          t = Math.floor(t / 1000000);
+          t += 'M';
+        } else if (t > 1000) {
+          t = Math.floor(t / 1000);
+          t += 'K';
+        }
+        let y = 185 + count * 30;
+        let x = CONTEXT.measureText(t).width / 2;
+        CONTEXT.fillText(highScores[datas.mode][rank].name, 118, y);
+        CONTEXT.fillText(t, 230 - x, y);
+        if (highScores[datas.mode][rank].date != 0 && highScores[datas.mode][rank].date != undefined) {
+          let date = new Date();
+          date.setTime(highScores[datas.mode][rank].date);
+          let yy = date.getYear();
+          let mm = date.getMonth() + 1;
+          let dd = date.getDate();
+          if (yy >= 100) {
+            yy -= 100
+          }
+          let li = [yy, mm, dd];
+          li.forEach(function (item, index) {
+            li[index] = String(item).padStart(2, '0');
+          });
+          t = `${li[0]}/${li[1]}/${li[2]}`;
+        } else {
+          t = '--/--/--';
+        }
+        x = CONTEXT.measureText(t).width / 2;
+        CONTEXT.fillText(t, 370 - x, y);
+        count++;
+      }
+      break;
   }
-  // drawFillText('CHANGE GAME MODE: Space', 0, 140, 16, '#ddd', 'bold');
+  drawFillText(`${hsSwitch + 1}/${HS_PAGES.length}`, 0, 140, 16, '#ddd', 'bold');
+  drawFillText('CHANGE MODE: Space / Enter', 0, 170, 14, '#ddd', 'bold');
   drawFillText('CHANGE DiSPLAY: Tab', 0, 190, 14, '#ddd', 'bold');
   drawFillText('BACK TO TiTLE: Esc', 0, 210, 14, '#ddd', 'bold');
 }
@@ -1849,7 +1984,8 @@ function keyAction(nowTime) {
 }
 
 document.onkeyup = function (e) {
-  if (situation === 'GAME') {
+  if (situation === 'GAME' ||
+    situation === 'CLEAR_EFFECT') {
     keyUp(e.key);
   }
 }
@@ -1924,6 +2060,11 @@ document.onkeydown = function (e) {
           break;
       }
       drawAll();
+      break;
+    case 'CLEAR_EFFECT':
+      if (e.key === keys.move_L || e.key === keys.move_R || e.key === keys.softDrop) {
+        keyPush(e.key);
+      }
       break;
     case "PAUSE":
       switch (e.key) {
@@ -2106,7 +2247,7 @@ document.onkeydown = function (e) {
               } else if (datas.selectPos = MINO_NAME.length) {
                 if (custom.mino.includes(true)) {
                   cusMinoSwitch = !cusMinoSwitch;
-                  datas.selectPos = 3;
+                  datas.selectPos = CUSTOM_MENU.indexOf('TETROMiNOS');
                 } else {
                   drawCustom();
                   drawFillText('You need at least one!', 0, 160, 20, '#ddd', 'bold')
@@ -2125,7 +2266,7 @@ document.onkeydown = function (e) {
           }
           datas.selectPos %= MINO_NAME.length + 1;
           drawCustom();
-        } else if (cusAdSwitch) {} else {
+        } else if (cusAdSwitch) { } else {
           switch (e.key) {
             case 'ArrowRight':
               if (datas.stats.level < MAX_LEVEL && datas.selectPos === CUSTOM_MENU.indexOf('START LEVEL')) {
@@ -2134,6 +2275,8 @@ document.onkeydown = function (e) {
                 custom.levelUp = true;
               } else if (datas.selectPos === CUSTOM_MENU.indexOf('ENDLESS')) {
                 custom.endless = true;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('@TETRiS')) {
+                custom.atTetris = true;
               }
               break;
             case 'ArrowLeft':
@@ -2143,6 +2286,8 @@ document.onkeydown = function (e) {
                 custom.levelUp = false;
               } else if (datas.selectPos === CUSTOM_MENU.indexOf('ENDLESS')) {
                 custom.endless = false;
+              } else if (datas.selectPos === CUSTOM_MENU.indexOf('@TETRiS')) {
+                custom.atTetris = false;
               }
               break;
             case ' ':
@@ -2154,6 +2299,9 @@ document.onkeydown = function (e) {
                 case CUSTOM_MENU.indexOf('ENDLESS'):
                   custom.endless = !custom.endless;
                   break;
+                case CUSTOM_MENU.indexOf('@TETRiS'):
+                  custom.atTetris = !custom.atTetris;
+                  break;
                 case CUSTOM_MENU.indexOf('TETROMiNOS'):
                   cusMinoSwitch = !cusMinoSwitch;
                   datas.selectPos = 0;
@@ -2163,13 +2311,19 @@ document.onkeydown = function (e) {
                   datas.selectPos = 0;
                   break;
                 case CUSTOM_MENU.indexOf('GAME START'):
-                  customSwitch = !customSwitch;
-                  situation = "GAME";
-                  datas.startTime = performance.now();
-                  spawnMino();
-                  drawAll();
-                  mainLoop();
-                  return;
+                  if (custom.atTetris && !custom.mino[MINO_NAME.indexOf('I')]) {
+                    drawCustom();
+                    drawFillText(`@TETRiS needs 'I'!`, 0, 160, 20, '#ddd', 'bold');
+                    return;
+                  } else {
+                    customSwitch = !customSwitch;
+                    situation = "GAME";
+                    datas.startTime = performance.now();
+                    spawnMino();
+                    drawAll();
+                    mainLoop();
+                    return;
+                  }
               }
               break;
             case 'Escape':
@@ -2200,6 +2354,12 @@ document.onkeydown = function (e) {
                 datas.mode = 'normal';
                 drawLevelSelect();
                 return;
+              case MAIN_MANU.indexOf('ONLY WiN @TETRiS'):
+                levelSwitch = !levelSwitch;
+                initialize("TITLE");
+                datas.mode = 'atTetris';
+                drawLevelSelect();
+                return;
               case MAIN_MANU.indexOf('CUSTOM GAME'):
                 customSwitch = !customSwitch;
                 initialize("TITLE");
@@ -2209,7 +2369,8 @@ document.onkeydown = function (e) {
               case MAIN_MANU.indexOf('HiGH SCORES'):
                 initialize("HIGH_SCORES")
                 datas.mode = 'normal';
-                hsSwitch = true;
+                hsSwitch = HS_PAGES.indexOf('SCORE');
+                hsModeSwitch = HS_MODES.indexOf('NORMAL GAME')
                 drawHighScore();
                 return;
               case MAIN_MANU.indexOf('KEY CONFiG'):
@@ -2255,7 +2416,7 @@ document.onkeydown = function (e) {
               break;
             case "Escape":
               initialize("TITLE");
-              datas.selectPos = 3;
+              datas.selectPos = MAIN_MANU.indexOf('KEY CONFiG');
               drawTitle();
               return;
           }
@@ -2280,6 +2441,7 @@ document.onkeydown = function (e) {
             drawConfig();
           } else if (confirmMode === 'back') {
             initialize("TITLE");
+            datas.selectPos = MAIN_MANU.indexOf('KEY CONFiG');
             drawTitle();
           }
           confirmMode = 'none';
@@ -2296,11 +2458,27 @@ document.onkeydown = function (e) {
     case "HIGH_SCORES":
       switch (e.key) {
         case "Tab":
-          hsSwitch = !hsSwitch;
+          hsSwitch++;
+          if (hsSwitch < 0) { hsSwitch += HS_PAGES.length; }
+          hsSwitch %= HS_PAGES.length;
+          break;
+        case " ":
+        case "Enter":
+          hsModeSwitch++;
+          if (hsModeSwitch < 0) { hsModeSwitch += HS_MODES.length; }
+          hsModeSwitch %= HS_MODES.length;
+          switch (hsModeSwitch) {
+            case HS_MODES.indexOf('NORMAL GAME'):
+              datas.mode = 'normal';
+              break;
+            case HS_MODES.indexOf('ONLY WiN @TETRiS'):
+              datas.mode = 'atTetris';
+              break;
+          }
           break;
         case "Escape":
           initialize("TITLE");
-          datas.selectPos = 2;
+          datas.selectPos = MAIN_MANU.indexOf('HiGH SCORES');
           drawTitle();
           return;
       }
@@ -2336,10 +2514,16 @@ function mainLoop() {
     case "CLEAR_EFFECT":
       let elapsedTime = nowTime - clearTime;
       if (elapsedTime >= 500) {
-        for (let line of datas.alignLine) {
-          field.splice(line, 1);
-          field.unshift(FIELD_TEMPLATE.slice());
-          datas.stats.lines++;
+        if (
+          (datas.mode != 'atTetris' &&
+            !(datas.mode === 'custom' && custom.atTetris)) ||
+          datas.alignLine.length === 4
+        ) {
+          for (let line of datas.alignLine) {
+            field.splice(line, 1);
+            field.unshift(FIELD_TEMPLATE.slice());
+            datas.stats.lines++;
+          }
         }
         levelUp();
         datas.alignLine = [];

@@ -25,9 +25,20 @@ article {
   width: 200px;
 }
 
+.desc {
+  width: calc(90vh * (480 / 430));
+  margin: 0 auto;
+}
+
 p {
   display: block;
   width: 300px;
+}
+
+ul {
+  margin: 0 auto;
+  display: block;
+  width: calc(90vh * (480 / 430));
 }
 
 #tet_field {

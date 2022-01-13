@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html lang="ja">
 
-<head>
+<head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# website: http://ogp.me/ns/website#">
+	<meta property="og:title" content="TETRiSしか勝たん！！" />
+	<meta property="og:url" content="https://cookie4410.github.io/tetris/" />
+	<meta property="og:image" content=" https://cookie4410.github.io/tetris/OGP.png" />
+	<meta property="og:description" content="TETRiS以外は認めないテトリス（通常のテトリスもあるよ）" />
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content="TETRiSしか勝たん！！" />
 	<meta charset="UTF-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>TETRIS</title>
+	<title>TETRISしか勝たん！！</title>
+	<link rel="icon" href="favicon.png">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -17,36 +24,70 @@
 	<main>
 		<canvas id="tet_field"></canvas>
 		<section>
-				<h1>TETRiS</h1>
-				<h2>操作方法</h2>
-				<article>
-					<h3 class="explane_header">メニュー操作</h3>
-					<p>
-						↑、↓、→、← : カーソル移動<br>
-						Enter : 決定<br>
-						Esc : キャンセル、戻る
-					</p>
-				</article>
-				<article>
-					<div class="explane_header">
-						<h3>ゲーム操作</h3>
-						<h4>（デフォルト）</h4>
-					</div>
-					<p>
-						← : 左移動<br>
-						→ : 右移動<br>
-						↓ : ソフトドロップ<br>
-						↑ : ハードドロップ<br>
-						A : 左回転<br>
-						D : 右回転<br>
-						shift : ホールド<br>
-						Esc : ポーズ
-					</p>
-				</article>
+			<h1>TETRiSしか勝たん！！</h1>
+			<h2>ゲーム説明</h2>
+			<h3>「TETRiSしか勝たん」モード</h3>
+			<p class="desc">
+				「テトリス(4列消し)」でしかラインが消えないモードです。<br>
+				1～3列消しの場合はラインが消える代わりに所謂「お邪魔ブロック」が下からせり上がります。<br>
+				その他は通常のテトリスと変わらないルールです。
+			</p>
+			<h3>ノーマルゲーム</h3>
+			<p class="desc">
+				至って普通のテトリスです。<br>
+				Tスピン、横タメ、設置猶予など極力現代的なテトリスに近づけています。<br>
+				10ライン消すごとにレベルが上がり、得点倍率と落下速度が上昇します。<br>
+				150ライン達成でクリアです。
+			</p>
+			<h3>カスタムゲーム</h3>
+			<p class="desc">
+				ハイスコアは記録されませんが、各種項目を設定して自由に遊べます。<br>
+				@TETRiSをオンにすれば「TETRiSしか勝たん」モードになります。<br>
+				テトロミノ内の項目を変更することで登場するテトロミノを制限できます。<br>
+				なお「TETRiSしか勝たん」ではI型テトロミノが必須です。
+			</p>
+			<h2>操作方法</h2>
+			<article>
+				<h3 class="explane_header">メニュー操作</h3>
+				<p>
+					↑、↓、→、← : カーソル移動<br>
+					Enter : 決定<br>
+					Esc : キャンセル、戻る
+				</p>
+			</article>
+			<article>
+				<div class="explane_header">
+					<h3>ゲーム操作</h3>
+					<h4>（デフォルト）</h4>
+				</div>
+				<p>
+					← : 左移動<br>
+					→ : 右移動<br>
+					↓ : ソフトドロップ<br>
+					↑ : ハードドロップ<br>
+					A : 左回転<br>
+					D : 右回転<br>
+					shift : ホールド<br>
+					Esc : ポーズ
+				</p>
+			</article>
+			<h2>参考サイト</h2>
+			<ul>
+				<li><a href="https://www.dropbox.com/s/g55gwls0h2muqzn/tetris%20guideline%20docs%202009.zip?dl=0&file_subpath=%2F2009+Tetris+Design+Guideline.pdf">2009 Tetris Design Guideline</a></li>
+				<li><a href="https://qiita.com/ki_ki33/items/35566f052af7b916607b">テトリス（tetris）のガイドラインを理解する</a></li>
+				<li><a href="http://www.terasol.co.jp/tag/%e6%96%b0%e4%ba%ba%e3%83%97%e3%83%ad%e3%82%b0%e3%83%a9%e3%83%9e%e3%83%bc%e3%81%af%e3%83%86%e3%83%88%e3%83%aa%e3%82%b9%e3%82%92%e4%bd%9c%e3%82%8c%e3%82%8b%e3%81%ae%e3%81%8b%ef%bc%9f">新人プログラマーはテトリスを作れるのか？(TERA SOLUSION)</a></li>
+			</ul>
 			<button id="download">スクリーンショット</button>
 			<h2>更新履歴</h2>
 			<article>
 				<dl>
+					<dt>2022/01/13</dt>
+					<dd>
+						ver.1.0.0<br>
+						「TETRiSしか勝たん」を実装<br>
+						ゲームオーバー演出が始まらないバグを修正<br>
+						テトリミノが移動し続けるバグを修正
+					</dd>
 					<dt>2022/01/12</dt>
 					<dd>
 						ver.0.2.0<br>
